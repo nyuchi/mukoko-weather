@@ -1445,6 +1445,7 @@ The Python FastAPI backend auto-generates an **OpenAPI 3.1** specification from 
 - `ANTHROPIC_API_KEY` — optional, server-side only. Without it, a basic weather summary fallback is generated.
 - `DB_INIT_SECRET` — optional, protects the `/api/db-init` endpoint in production (via `x-init-secret` header)
 - `ALERT_WEBHOOK_URL` — optional, enables webhook alerting for high/critical severity errors (Slack incoming webhook, Discord webhook, PagerDuty, or compatible services). Used by `src/lib/observability.ts`
+- `NEXT_PUBLIC_MAPTILER_API_KEY` — MapTiler Cloud API key for OpenMapTiles base map tiles and aviation map layers (`feature/openmaptiles` branch). Set in `.env.local` (gitignored). Key stored in MapTiler Cloud account.
 
 ## Common Patterns
 
