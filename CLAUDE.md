@@ -450,6 +450,14 @@ LazySection(fallback=<ChartSkeleton />) + ChartErrorBoundary
 
 All data handling, AI operations, database CRUD, and rule evaluation run in Python FastAPI, deployed as Vercel serverless functions. Next.js serves as the presentation layer only. Routes are proxied via `vercel.json` rewrites (`/api/py/*` → `api/py/index.py`).
 
+**Multi-database architecture (Phase 0B):** Mukoko-weather now consumes six databases on the shared Nyuchi Platform cluster — `weather`, `places`, `identity`, `shamwari`, `device`, `integrations`. See `docs/mongodb-schema-map.md` for the full map.
+
+- DB accessors live in `api/py/_db.py`: `weather_db()`, `places_db()`, `identity_db()`, `shamwari_db()`, `device_db()`, `integrations_db()`. The legacy `get_db()` is aliased to `weather_db()` for backward compat.
+- Collection accessors (existing): `weather_cache_collection()`, `ai_summaries_collection()`, `locations_collection()`, etc. — all routed through the appropriate platform DB. `device_profiles_collection()` now lives in the platform `device` DB.
+- Platform collection accessors (new, camelCase, schema-validated): `stations_collection()`, `observations_collection()`, `alerts_collection()`, `community_reports_collection()`, `places_collection()`, `places_geo_collection()`, `persons_collection()`, `credentials_collection()`, `activity_log_collection()`, `conversations_collection()`, `messages_collection()`, `guardrails_collection()`, `devices_collection()`, `provider_configurations_collection()`, etc.
+- **Auto-stamped writes:** `stamp_platform_fields(doc, country_code="ZW", province_slug=None)` adds the required `_id` (UUID), `_schemaVersion: "v3.1"`, `bundu` sub-doc, `createdAt`, and `updatedAt`. Strict validators (`validationAction: "error"`) reject writes that lack these fields, so call this on every insert into a platform collection.
+- TypeScript mirror: `src/lib/mongo.ts` exports `weatherDb()`, `placesDb()`, `identityDb()`, `shamwariDb()`, `deviceDb()`, `integrationsDb()`. `src/lib/db.ts` exports `stampPlatformFields()` plus the matching collection accessors (`stationsCollection`, `placesCollection`, `personsCollection`, etc.).
+
 **CORS:** Restricted to `https://weather.mukoko.com` and `http://localhost:3000` (not wildcard).
 
 **Rate limiting:** MongoDB-backed IP rate limiter (`check_rate_limit` in `_db.py`). Per-endpoint limits:
@@ -1491,10 +1499,37 @@ The Python FastAPI backend auto-generates an **OpenAPI 3.1** specification from 
 
 Community locations are stored in the same MongoDB `locations` collection as seed data and are immediately available at `/{slug}`.
 
-### Database (MongoDB Atlas)
-- Client: `src/lib/mongo.ts` (module-scoped, connection-pooled via `@vercel/functions`) and `api/py/_db.py` (Python, module-scoped)
-- Operations: `src/lib/db.ts` (TypeScript, used by `db-init` and OG routes) and `api/py/_db.py` (Python, primary — all collection accessors, rate limiting, API key management)
-- Collections: weather_cache, ai_summaries, weather_history, locations, rate_limits, activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports, history_analysis, device_profiles, countries, provinces
+### Database (MongoDB Atlas — Nyuchi Platform cluster)
+
+Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mukoko consumes six of them. See `docs/mongodb-schema-map.md` for the full map.
+
+- **Clients:** `src/lib/mongo.ts` (TypeScript, module-scoped, connection-pooled via `@vercel/functions`) and `api/py/_db.py` (Python, module-scoped). One `MongoClient` per process, multiple databases via `.db("...")` / `.get_database("...")`.
+- **Operations:** `src/lib/db.ts` (used by `db-init` and OG routes) and `api/py/_db.py` (Python primary — all collection accessors, rate limiting, API key management).
+
+**Platform databases (Phase 0B):**
+
+| DB | Mukoko collections | TS / Python accessors |
+|----|--------------------|------------------------|
+| `weather` | weather_cache, ai_summaries, weather_history, locations, activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, countries, provinces, metar_cache, rate_limits, **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
+| `places` | **places**, **placesGeo**, **categories**, **routes**, **conditionReports** | `placesDb()` / `places_db()` |
+| `identity` | **persons**, **credentials**, **activityLog** | `identityDb()` / `identity_db()` |
+| `shamwari` | **conversations**, **messages**, **guardrails**, **knowledgeBase**, **preferences** | `shamwariDb()` / `shamwari_db()` |
+| `device` | **devices**, **commands**, **telemetry**, **deviceHistory**, device_profiles (legacy) | `deviceDb()` / `device_db()` |
+| `integrations` | **providers**, **providerConfigurations** | `integrationsDb()` / `integrations_db()` |
+
+**Schema conventions (universal):**
+- `_id` is a string (UUID), not ObjectId
+- `_schemaVersion: "v3.1"` required (enum-validated)
+- `bundu` sub-doc required: `{ countryCode, provinceSlug?, ... }`
+- `createdAt` + `updatedAt` required (Dates)
+- Strict validators: `validationAction: "error"` — writes fail if shape is wrong
+- camelCase collection names for new collections (`communityReports`, not `weather_reports`; `activityLog`, not `activity_log`; `placesGeo`, not `places_geo`)
+
+**Stamping writes:** Use `stampPlatformFields(doc, opts)` (TS) / `stamp_platform_fields(doc, country_code=..., province_slug=...)` (Python) on every insert into a platform-validated collection — they auto-fill `_id`, `_schemaVersion`, `createdAt`, `updatedAt`, and `bundu.countryCode` (+ `provinceSlug` if given), preserving any existing values.
+
+**Backward compat:** `getDb()` / `get_db()` is aliased to `weatherDb()` / `weather_db()` so existing call sites keep working. Legacy collection accessors (`weather_cache_collection`, `locations_collection`, etc.) now route to the appropriate platform DB internally — no call-site changes required.
+
+**Other notes:**
 - Collections use TTL indexes for automatic cache expiration
 - Historical weather data is recorded automatically on every fresh API fetch
 - Rate limits collection has TTL index on `expiresAt` for automatic cleanup
