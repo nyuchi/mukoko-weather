@@ -549,6 +549,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/py/reports/clarify` — POST, AI-generated follow-up questions for weather report clarification. Rate-limited 10 req/hour/IP
 - `/api/py/devices` — POST (create) / GET (fetch) / PATCH (update), device profile sync for cross-device preferences
 - `/api/py/embeddings/status` — GET, vector search infrastructure status (stub)
+- `/api/py/airquality` — GET, EPA-standard Air Quality Index (0-500) + 7-pollutant breakdown (PM2.5, PM10, O3, NO2, SO2, CO, NH3) for `lat`/`lon`. Sourced from Open-Meteo Air Quality (free, no key) via `open_meteo_breaker`. Cached 1 h in `weather.air_quality_cache` with deterministic `_id` (`{lat:.4f}_{lon:.4f}`) so duplicate requests upsert one row, never two
 - `/api/py/health` — GET, basic health check (MongoDB + Anthropic availability)
 
 ### Error Handling
@@ -1538,7 +1539,7 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 
 | DB | Mukoko collections | TS / Python accessors |
 |----|--------------------|------------------------|
-| `weather` | weather_cache, ai_summaries, weather_history, locations, activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, countries, provinces, metar_cache, rate_limits, **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
+| `weather` | weather_cache, ai_summaries, weather_history, locations, activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, countries, provinces, metar_cache, rate_limits, **air_quality_cache** (NEW — 1-h TTL, _id keyed by `{lat:.4f}_{lon:.4f}`), **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
 | `places` | **places**, **placesGeo**, **categories**, **routes**, **conditionReports** | `placesDb()` / `places_db()` |
 | `identity` | **persons**, **credentials**, **activityLog** | `identityDb()` / `identity_db()` |
 | `shamwari` | **conversations**, **messages**, **guardrails**, **knowledgeBase**, **preferences** | `shamwariDb()` / `shamwari_db()` |
