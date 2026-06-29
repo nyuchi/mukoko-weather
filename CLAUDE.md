@@ -711,7 +711,35 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 - `precipitationLabel(p)` — None / Light / Moderate / Heavy
 - `feelsLikeContext(apparent, actual)` — Cooler than actual / Warmer than actual / Same as actual
 
-**Provider strategy:** The weather API route (`/api/py/weather`) tries MongoDB cache first (15-min TTL), then Tomorrow.io, then Open-Meteo, then seasonal estimates (never fails). The `X-Weather-Provider` response header indicates which provider served the data. The `X-Cache: HIT | MISS` header indicates cache status.
+**Provider strategy (priority 0 = StationKit, then forecast chain):** The weather API route (`/api/py/weather`) consults sources in this order:
+
+0. **Nyuchi StationKit** (`api/py/_weather.py` `nearest_station_observation`) — most recent QC-validated `weather.observations` doc within **50 km** and the **last 60 minutes**. If a station is in range, its sensor data replaces the `current` block of the response while hourly/daily are still served from the commercial provider/cache below.
+1. **MongoDB cache** (`weather_cache`, 15-min TTL)
+2. **Tomorrow.io** (primary commercial provider)
+3. **Open-Meteo** (free fallback)
+4. **Seasonal estimate** (never fails)
+
+The endpoint sets three response headers so callers can verify which source served what:
+- `X-Cache` — `HIT` | `MISS` (cache status for the forecast data)
+- `X-Weather-Provider` — origin of the **hourly/daily forecast** (`tomorrow` | `open-meteo` | `fallback`)
+- `X-Current-Source` — origin of the **`current` block** (`stationkit` | `tomorrow` | `open-meteo` | `fallback`)
+
+**StationKit integration loop (Phase 0D):**
+
+```
+StationKit hardware → device.devices (registry, fleet ops)
+        ↓                       ↓
+   raw readings           heartbeats / telemetry
+        ↓
+weather.stationObservations → QC pipeline → weather.observations
+                                                    ↓
+                                /api/py/weather  →  X-Current-Source: stationkit
+```
+
+- **Current station fleet:** 1 active station — `nyuchi-africa-hq-harare` (Harare, Zimbabwe). Sensors: temperature, humidity, pressure, wind speed, wind direction, rainfall, UV index, solar radiation. QC rating "excellent".
+- **Reader:** `nearest_station_observation(lat, lon, max_distance_km=50, max_age_minutes=60)` runs a `$nearSphere` geospatial query on `weather.observations.location` (GeoJSON Point, 2dsphere-indexed), filtered to `qcStatus=="validated"` and `observedAt >= now - max_age_minutes`, sorted by `observedAt` desc, limit 1. Wrapped in try/except — returns `None` if the index is missing or any DB error occurs, so the endpoint falls through to the commercial chain unmolested.
+- **Field mapping:** `station_observation_to_current(obs)` translates platform-schema metric names (`airTemperatureCelsius`, `relativeHumidityPercent`, `atmosphericPressureMillibar`, `windSpeedKph`, `windDirectionDegrees`, `precipitationMillimeters`, `uvIndex`) to mukoko's existing `current` shape (`temperature_2m`, `relative_humidity_2m`, `surface_pressure`, etc.).
+- **No writes from this route** — the endpoint is read-only against `weather.stations` / `weather.observations`. Station observations themselves are produced by the StationKit ingest pipeline, not by mukoko-weather.
 
 ### State Management (Zustand)
 
