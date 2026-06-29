@@ -524,6 +524,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/embed` — widget embedding docs
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
+- `/api/ai/[...path]` — ANY (Phase 1D), auth-gated proxy for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
 - `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording)
 - `/api/py/ai` — POST, AI weather summaries (MongoDB cached with tiered TTL: 30/60/120 min)
 - `/api/py/chat` — POST, Shamwari Explorer chatbot (Claude + tool use: search_locations, get_weather, get_activity_advice, list_locations_by_tag). Rate-limited 20 req/hour/IP
@@ -1570,6 +1571,25 @@ Redirect back to returnPathname ("/")
 - `_schemaVersion: "v3.1"`, `isActive`, `emailVerified`, `phoneNumberVerified`, `createdAt`, `updatedAt` are all required by the strict validator. `upsertPlatformPerson` stamps every one of them on insert (and never strips them on update).
 - OIDC standard claims set when WorkOS provides them: `email`, `givenName`, `familyName`, `picture`.
 - `bundu.countryCode` defaults to `"ZW"` per `DEFAULT_COUNTRY_CODE`; revisit when we onboard countries outside Zimbabwe.
+
+### Auth gating policy (Phase 1D)
+
+The app is **public by default** — weather pages, explore, search, maps, and every read-only weather endpoint stay anonymous-accessible. Auth gates the AI surface and the premium feature pages.
+
+| Surface | Gate | Mechanism |
+|---|---|---|
+| `/shamwari` | Page-level | `await requireUser()` at the top of the server component → AuthKit redirects anon users to sign-in |
+| `/aviation` | Page-level | `await requireUser()` (METAR/TAF planner + PDF briefings) |
+| `/history` | Page-level | `await requireUser()` (historical analysis dashboard) |
+| `/api/ai/*` | Route-level | Next.js proxy at `src/app/api/ai/[...path]/route.ts` calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers |
+| `AISummary` widget on public location pages | Component-level | Receives a `user: AISummaryUser \| null` prop hydrated server-side via `getCurrentUser()` in `/[location]/page.tsx`. Anonymous users see a `.baobab` sign-in CTA (with `.kudu-sm` button → `/auth/signin?returnTo=<current>`). Signed-in users see the summary as before. |
+| `AISummaryChat` follow-up | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA. |
+
+**What is NOT gated** (must remain anonymous): `/`, `/[location]/*`, `/explore`, `/explore/**`, `/api/py/weather`, `/api/py/search`, `/api/py/geo`, `/api/py/locations`, `/api/py/airquality`, `/api/py/metar`, `/api/py/map-tiles/*`, `/api/py/reports` (GET/POST), `/api/py/status`, `/api/py/health`, `/api/py/activities`, `/api/py/suitability`, `/api/py/tags`, `/api/py/regions`, `/api/py/devices`, `/api/og`, `/api/db-init`, `/embed/*`.
+
+**Why a Next.js proxy in front of the Python AI endpoints** — the WorkOS session cookie is encrypted with `WORKOS_COOKIE_PASSWORD` on the Next.js side. Python doesn't have the WorkOS SDK or the cookie crypto, so trying to validate sessions there would either duplicate auth or punch a hole. The proxy is single-source-of-truth: AuthKit decides who's signed in, then forwards a clean request with a user-id header. The underlying `/api/py/ai/*` routes still exist (so Python tests stay simple, and internal callers can hit them directly) but the UI now only ever calls `/api/ai/*`.
+
+**Sign-in returnTo** — `/auth/signin?returnTo=<path>` is honoured by `src/app/auth/signin/route.ts`. The route sanitises the param (rejects `//`-prefixed and absolute URLs to prevent open-redirect abuse), then passes it to `getSignInUrl({ returnTo })` so AuthKit drops the user back where they started after a successful WorkOS exchange.
 
 ## Common Patterns
 
