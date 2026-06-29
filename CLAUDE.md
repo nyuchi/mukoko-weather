@@ -1555,6 +1555,14 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 
 **Stamping writes:** Use `stampPlatformFields(doc, opts)` (TS) / `stamp_platform_fields(doc, country_code=..., province_slug=...)` (Python) on every insert into a platform-validated collection — they auto-fill `_id`, `_schemaVersion`, `createdAt`, `updatedAt`, and `bundu.countryCode` (+ `provinceSlug` if given), preserving any existing values.
 
+**`placesGeo` writes (Phase 0E):** `places.placesGeo` has its OWN validator that does NOT include a `bundu` field — calling `stamp_platform_fields` on it would fail. Use `api/py/_places_geo.upsert_placesgeo_city()` instead. The helper:
+
+- Builds the doc manually (no `bundu`), uses `_schemaVersion: "v3.2"`, and stamps `sourceProvenance.dataOrigin: "mukoko_user"`.
+- **Always dedupes first** via `find_nearby_placesgeo` — 5 km radius, normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country _id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
+- Slugs are `<slugified-name>-<6-char hex>` (e.g. `harare-a1b2c3`). Suffixing with `-2`, `-3`, … is forbidden — slug collisions in `weather.locations` now raise `SlugCollisionError` and surface the existing record as a `mode: "duplicate"` response.
+
+**Fundi search-miss queue (Phase 0E):** When mukoko adds a new location it ALSO enqueues a POI seed request via `_places_geo.enqueue_fundi_seed()`. The Fundi worker (separate service, MCP-only) polls `places.seedRequests` and processes each entry. Mukoko fires and forgets — no polling endpoint. `enqueue_fundi_seed` itself dedupes against any `queued`/`processing` request within 1 km. See `docs/mongodb-schema-map.md` "Search-miss flow" for the full doc shape and dedup rules.
+
 **Backward compat:** `getDb()` / `get_db()` is aliased to `weatherDb()` / `weather_db()` so existing call sites keep working. Legacy collection accessors (`weather_cache_collection`, `locations_collection`, etc.) now route to the appropriate platform DB internally — no call-site changes required.
 
 **Other notes:**
