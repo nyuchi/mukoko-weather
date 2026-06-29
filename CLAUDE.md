@@ -21,7 +21,10 @@ Social: Twitter @mukokoafrica, Instagram @mukoko.africa
 - **Framework:** Next.js 16.1.6 (App Router, TypeScript 5.9.3)
 - **UI components:** shadcn/ui (new-york style, Lucide icons)
 - **Charts:** Chart.js 4 + react-chartjs-2 (Canvas 2D rendering via `src/components/ui/chart.tsx`)
-- **Maps:** Leaflet + react-leaflet (dynamic import, SSR disabled; Mapbox base tiles + Tomorrow.io weather overlays via `/api/py/map-tiles` proxy)
+- **Maps:** MapLibre GL JS + MapTiler Cloud (vector tiles direct from CDN via `NEXT_PUBLIC_MAPTILER_API_KEY` — no server proxy; GPU-rendered; theme-aware streets-v2 / streets-v2-dark styles); Tomorrow.io raster weather overlays still proxied via `/api/py/map-tiles`
+- **Aviation:** NOAA Aviation Weather Center for METAR/TAF data; `@react-pdf/renderer` for pre-flight briefing PDFs; 37 ICAO airports mapped (`src/lib/icao-codes.ts`) with `getNearestIcao(lat, lon)` haversine fallback
+- **Drag-and-drop:** `@dnd-kit/core` + `@dnd-kit/sortable` for user-reorderable sections on the location page
+- **Branding:** Mukoko brand kit doctrine v4.1.0 — 7 minerals (cobalt, tanzanite, malachite, gold, terracotta, sodalite, copper); Noto Serif (display/wordmark), Noto Sans (UI), JetBrains Mono (code/labels)
 - **Styling:** Tailwind CSS 4 with CSS custom properties (Brand System v6)
 - **Markdown:** react-markdown 10 (AI summary rendering)
 - **State:** Zustand 5.0.11 (with `persist` middleware — theme, location, activities, hasOnboarded saved to localStorage; device sync to Python backend)
@@ -1316,6 +1319,34 @@ Before every commit, you MUST complete ALL of these steps. Do not skip any.
 - **Never hardcode** — no hex colors, rgba(), inline `style={{}}`, or dynamic Tailwind class construction
 - **Tailwind classes** — always use Tailwind utility classes backed by CSS custom properties
 - **Canvas chart colors** — resolved at render time via `resolveColor()` from `src/components/ui/chart.tsx`
+- **Design tokens for sizes** — touch targets, radii, and other dimensions live in `:root` (e.g. `--touch-target-min: 48px`, `--radius-button: 9999px`) and are referenced via Tailwind arbitrary values like `w-[var(--touch-target-min)]`. Never hardcode `w-14 h-14` or `min-h-[56px]` on individual components — changing the token must propagate everywhere.
+
+### Fauna — Semantic Component Classes
+
+Repeated Tailwind chains (3+ uses) are extracted into named component classes in the `@layer components` block of `globals.css`, named after African animals and birds. Components compose these instead of duplicating utility chains.
+
+**Current palette:**
+
+| Class | Purpose | Replaces |
+|-------|---------|----------|
+| `.kudu` | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...` |
+| `.impala` | Secondary/outline pill button | `border border-border bg-transparent px-5 py-3 ...` |
+| `.bee` | Round icon button (mukoko = beehive) | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...` |
+| `.baobab` | Primary card surface | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm` |
+| `.acacia` | Quieter card surface | `rounded-card border border-border bg-surface-card p-4` |
+| `.giraffe` | Section heading (tall, stands above) | `text-base font-semibold text-text-primary font-heading` |
+| `.gazelle` | Body paragraph copy | `text-base text-text-secondary leading-relaxed` |
+| `.dove` | Muted secondary text | `text-sm text-text-tertiary` |
+| `.weaver` | Primary nav link | `inline-flex items-center text-base font-medium text-text-secondary hover:...` |
+| `.weaver-active` | Active nav link (cobalt + underline) | active variant of `.weaver` |
+| `.chameleon` | Skeleton placeholder | `animate-pulse rounded-card border border-surface-dim bg-surface-card shadow-sm` |
+
+**Rules:**
+- Add new fauna classes when a pattern is duplicated 3+ times
+- Compose fauna classes with custom utilities where needed: `<button class="kudu press-scale">`
+- Fauna classes live in `@layer components` so per-utility classes still override them
+- Naming: African animals/birds (kudu, impala, bee, dove, weaver, eagle, hornbill, crane, etc.)
+- Update once in `globals.css` — every consumer picks it up automatically
 
 ### Accessibility
 - **Skip-to-content link** — `<a href="#main-content" className="sr-only focus:not-sr-only ...">` in root `layout.tsx`, targets `<main id="main-content">` on each page
@@ -1325,7 +1356,7 @@ Before every commit, you MUST complete ALL of these steps. Do not skip any.
 - **Screen reader utilities** — `.sr-only` CSS class in `globals.css` for visually hidden but screen reader accessible text
 - **Reduced motion** — all entrance animations, stagger delays, and transitions gated by `@media (prefers-reduced-motion: no-preference)`; `prefers-reduced-motion: reduce` disables all animations/transitions globally
 - **High contrast** — `prefers-contrast: more` overrides for maximum contrast; `forced-colors: active` support for Windows High Contrast mode
-- **Touch targets** — all interactive elements have 56px minimum touch targets
+- **Touch targets** — minimum 48px on touch devices (`@media (pointer: coarse)` rule in `globals.css` applies `min-height: var(--touch-target-min)` to `a`, `button`, etc.). Desktop (fine pointer) does not enforce the min-height — pointer precision makes it unnecessary and the rule was causing footer/nav link heights to inflate.
 - **Headings** — all sections use `aria-labelledby` with heading IDs
 - **Decorative elements** — icons marked `aria-hidden="true"`
 - **Skeletons** — all loading states include `role="status"` and `aria-label="Loading"` (`sr-only` span is optional when `aria-label` is present)
