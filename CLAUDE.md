@@ -280,7 +280,8 @@ mukoko-weather/
 │   │   ├── weather-labels.ts      # Contextual label helpers (humidityLabel, pressureLabel, cloudLabel, feelsLikeContext)
 │   │   ├── weather-labels.test.ts
 │   │   ├── mongo.ts               # MongoDB Atlas connection pooling
-│   │   ├── db.ts                  # Database CRUD + Atlas Search/Vector Search (weather_cache, ai_summaries, weather_history, locations, rate_limits, activities, suitability_rules, tags, regions, seasons, ai_prompts, ai_suggested_rules, weather_reports, history_analysis)
+│   │   ├── db.ts                  # Database CRUD (weather_cache, ai_summaries, weather_history, rate_limits, activities, suitability_rules, tags, regions, seasons, ai_prompts, ai_suggested_rules, weather_reports, history_analysis). Location lookups delegate to places.ts (Phase 0F).
+│   │   ├── places.ts              # Canonical location resolver — reads from places.placesGeo (admin geography) + places.places (POIs). Replaces all reads from the dropped weather.locations.
 │   │   ├── db.test.ts
 │   │   ├── observability.ts       # Structured error logging + GA4 error reporting
 │   │   ├── observability.test.ts
@@ -1615,7 +1616,7 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 
 | DB | Mukoko collections | TS / Python accessors |
 |----|--------------------|------------------------|
-| `weather` | weather_cache, ai_summaries, weather_history, locations, activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, countries, provinces, metar_cache, rate_limits, **air_quality_cache** (NEW — 1-h TTL, _id keyed by `{lat:.4f}_{lon:.4f}`), **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
+| `weather` | weather_cache, ai_summaries, weather_history, ~~locations~~ (dropped Phase 0F — use `places.placesGeo` via `src/lib/places.ts`), activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, countries, provinces, metar_cache, rate_limits, **air_quality_cache** (NEW — 1-h TTL, _id keyed by `{lat:.4f}_{lon:.4f}`), **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
 | `places` | **places**, **placesGeo**, **categories**, **routes**, **conditionReports** | `placesDb()` / `places_db()` |
 | `identity` | **persons**, **credentials**, **activityLog** | `identityDb()` / `identity_db()` |
 | `shamwari` | **conversations**, **messages**, **guardrails**, **knowledgeBase**, **preferences** | `shamwariDb()` / `shamwari_db()` |
@@ -1638,7 +1639,51 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 - **Always dedupes first** via `find_nearby_placesgeo` — 5 km radius, normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country _id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
 - Slugs are `<slugified-name>-<6-char hex>` (e.g. `harare-a1b2c3`). Suffixing with `-2`, `-3`, … is forbidden — slug collisions in `weather.locations` now raise `SlugCollisionError` and surface the existing record as a `mode: "duplicate"` response.
 
-**Fundi search-miss queue (Phase 0E):** When mukoko adds a new location it ALSO enqueues a POI seed request via `_places_geo.enqueue_fundi_seed()`. The Fundi worker (separate service, MCP-only) polls `places.seedRequests` and processes each entry. Mukoko fires and forgets — no polling endpoint. `enqueue_fundi_seed` itself dedupes against any `queued`/`processing` request within 1 km. See `docs/mongodb-schema-map.md` "Search-miss flow" for the full doc shape and dedup rules.
+**Fundi search-miss queue (Phase 0E — disabled in Phase 0F):** Previously mukoko ALSO enqueued a POI seed request via `_places_geo.enqueue_fundi_seed()` so the Fundi worker would populate `places.places`. Phase 0F removes this call — POI enrichment is a separate optional concern and is not P0 for mukoko-weather. Re-enable behind a flag like `MUKOKO_ENRICH_POIS_VIA_FUNDI` once the POI surface is actually consumed.
+
+**Location resolution (Phase 0F — `weather.locations` dropped):**
+
+`weather.locations` is **gone**. Every location read/write flows through `places.placesGeo` (admin geography) + `places.places` (POIs from OSM/Fundi) via `src/lib/places.ts`. Mukoko-weather is now a consumer of the platform's canonical geographic data, not a maintainer of a parallel silo.
+
+| Helper (`src/lib/places.ts`) | Purpose |
+|---|---|
+| `resolveLocationSlug(slug)` | Clean URL slug → adapted `LocationDoc` via placesGeo |
+| `nearestPlacesGeo(lat, lon, maxKm?)` | $nearSphere on placesGeo for IP-geo / GPS reverse lookup |
+| `searchPlaces(query, bbox?)` | Searches `places.places` POIs for the explore/search flows |
+| `adaptPlacesGeoToLocationDoc(doc, hint)` | Adapter — placesGeo doc → legacy `LocationDoc` shape |
+
+Resolution chain for `/harare`:
+
+```
+/harare
+  → resolveLocationSlug("harare")
+       1. placesGeo.sourceProvenance.mukokoSlug = "harare"   ← stamped lookup
+       2. LOCATIONS[slug].name = "Harare" → placesGeo by    ← static-seed name lookup
+          normalised name (city > town > village)
+       3. inferNameFromSlug("nairobi-ke") = "Nairobi" → same ← inference fallback
+          name lookup
+  → adaptPlacesGeoToLocationDoc(doc, hint)
+       lat/lon  ← doc.geo.coordinates
+       country  ← doc.isoCode  OR  parentPlaceId → country isoCode
+       province ← doc.sourceProvenance.mukokoProvince  OR  static seed
+       elevation← doc.sourceProvenance.mukokoElevation OR  static seed
+       tags     ← doc.sourceProvenance.mukokoTags      OR  static seed
+       slug     ← the requested CLEAN slug (NOT the hash-suffixed platform slug)
+```
+
+`src/lib/db.ts → getLocationFromDb(slug)` now delegates straight to `resolveLocationSlug` and packages the response as a `LocationDoc`, so every existing caller (`src/app/[location]/*` server components, sitemap, etc.) keeps working with no changes.
+
+**Create-on-demand:** When a user lands on `/<unknown-slug>` AND the request has lat/lon (IP geo header or GPS), `POST /api/py/locations/add` runs `_reverse_geocode → upsert_placesgeo_city(...)` (Phase 0E helper) which:
+
+- Dedupes via `find_nearby_placesgeo` (5 km radius, normalised-name match, country-scoped) and patches the existing doc with the new `mukokoSlug` / `mukokoTags` / `mukokoNominatimAddress` when it finds one
+- Otherwise inserts a fresh placesGeo doc with `sourceProvenance.dataOrigin: "mukoko_user"` plus the mukoko-side metadata stamped into `sourceProvenance.mukoko*`
+- Returns `{ placesGeoId, placesGeoSlug, location }` so the caller can redirect
+
+Slugs in `places.placesGeo` are hash-suffixed (`harare-a1b2c3`) — the resolver always bridges the clean mukoko slug to the platform record, never exposes the suffix in URLs.
+
+**Dedup discipline (Phase 0E carried forward):** No auto-suffixed slugs (`-2`, `-3`) ever. When two placesGeo entries share a normalised name within 5 km, the resolver prefers `geoType: city > town > village`, then higher `sourceProvenance.dataConfidence`. The `LOCATIONS` static seed array has globally-unique slugs by construction (tested).
+
+**Static `LOCATIONS` array still ships in code** (`src/lib/locations.ts`) — but **not as a database seed source**. It's the canonical clean-slug → display-name/tags/province/elevation map for the 265 places the app ships with. New community-created entries get those fields via `sourceProvenance.mukoko*` on the placesGeo doc itself.
 
 **Backward compat:** `getDb()` / `get_db()` is aliased to `weatherDb()` / `weather_db()` so existing call sites keep working. Legacy collection accessors (`weather_cache_collection`, `locations_collection`, etc.) now route to the appropriate platform DB internally — no call-site changes required.
 
@@ -1648,16 +1693,14 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 - Rate limits collection has TTL index on `expiresAt` for automatic cleanup
 
 **Atlas Search (fuzzy text search):**
-- `searchLocationsFromDb(query, options)` — tries Atlas Search first (fuzzy + autocomplete via `$search`), falls back to `$text` index if Atlas Search index is unavailable
-- `searchActivitiesFromDb(query)` — same pattern for activities (Atlas Search → `$text` fallback)
-- Requires Atlas Search indexes named `location_search` and `activity_search` (definitions in `src/lib/db.ts` via `getAtlasSearchIndexDefinitions()`)
-- **Time-based recovery:** When a missing-index error is detected (MongoDB code 40324), search is disabled for `ATLAS_RETRY_AFTER_MS` (5 minutes), then automatically retries. Transient errors (network, timeout) do not disable the search — only permanent index-missing errors do.
+- `searchActivitiesFromDb(query)` — Atlas Search → `$text` fallback for activities
+- Phase 0F: `searchLocationsFromDb` now scans the static `LOCATIONS` seed catalog directly (no Atlas Search). Location text search will be reimplemented against `places.placesGeo` or `places.places` in a follow-up.
+- Requires an Atlas Search index named `activity_search` (definitions in `src/lib/db.ts` via `getAtlasSearchIndexDefinitions()`)
+- **Time-based recovery:** When a missing-index error is detected (MongoDB code 40324), search is disabled for `ATLAS_RETRY_AFTER_MS` (5 minutes), then automatically retries.
 
-**Vector Search (semantic search — infrastructure):**
-- `vectorSearchLocations(embedding, options)` — $vectorSearch pipeline with cosine similarity on 1024-dimension embeddings
-- `storeLocationEmbedding(slug, embedding)` / `storeLocationEmbeddings(entries)` — store pre-computed embeddings on location documents
-- **Foundation for future work:** No code currently generates or stores embeddings. The `vectorSearchLocations` function is guarded — it checks for at least one location with a stored embedding before running `$vectorSearch`, preventing unnecessary Atlas errors.
-- Requires a Vector Search index named `location_vector` on the locations collection
+**Vector Search (semantic search — Phase 0F neutralised):**
+- `vectorSearchLocations(embedding, options)` returns `[]` and `storeLocationEmbedding*` are no-ops — `weather.locations` is dropped, so there's nowhere to store embeddings.
+- Semantic search will be reimplemented against `shamwari.knowledgeBase` (vector-embedded) or `places.places` once an embedding pipeline lands.
 
 **$facet aggregation:**
 - `getTagCountsAndStats()` — runs tag counts and location stats in a single aggregation pipeline
