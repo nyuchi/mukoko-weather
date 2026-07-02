@@ -4,7 +4,7 @@
 
 mukoko weather is an AI-powered global weather intelligence platform. It provides real-time weather data, 7-day forecasts, frost alerts, and AI-generated contextual advice for farming, mining, travel, and daily life. The app is fully global — any valid coordinates worldwide are accepted. Current seed data covers 265 total locations (98 Zimbabwe + 167 global) — with new locations added dynamically by the community via geolocation and search from anywhere in the world.
 
-**Live URL:** https://weather.mukoko.com
+**Live URL:** <https://weather.mukoko.com>
 
 ## Company Structure
 
@@ -13,7 +13,7 @@ mukoko weather is an AI-powered global weather intelligence platform. It provide
 - **Mukoko Africa** — division of Nyuchi Africa
 - **mukoko weather** — a Mukoko Africa product
 
-Contact: support@mukoko.com, hi@mukoko.com, legal@nyuchi.com
+Contact: <support@mukoko.com>, <hi@mukoko.com>, <legal@nyuchi.com>
 Social: Twitter @mukokoafrica, Instagram @mukoko.africa
 
 ## Tech Stack
@@ -410,26 +410,23 @@ Layer 5: Server page wrappers (page.tsx — SEO, data fetching, error boundaries
 
 Not every component needs every layer. Requirements scale with component weight:
 
-| Tier | Examples | Error Boundary | LazySection | Skeleton | Accessibility | Global Styles | Tests |
-|------|----------|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Primitives** | Button, Badge, Card, Input, Skeleton | N/A | No | Loading/disabled state | Yes | Yes | Yes |
-| **Composites** | StatCard, FrostAlertBanner, SeasonBadge | Parent boundary | No | Loading prop | Yes | Yes | Yes |
-| **Sections** | Charts, AISummary, HourlyForecast | ChartErrorBoundary | LazySection | ChartSkeleton | Yes | Yes | Yes |
-| **Pages** | WeatherDashboard, HistoryDashboard | page error.tsx | No | loading.tsx | Yes | Yes | Yes |
+| Tier           | Examples                                |   Error Boundary   | LazySection |        Skeleton        | Accessibility | Global Styles | Tests |
+| -------------- | --------------------------------------- | :----------------: | :---------: | :--------------------: | :-----------: | :-----------: | :---: |
+| **Primitives** | Button, Badge, Card, Input, Skeleton    |        N/A         |     No      | Loading/disabled state |      Yes      |      Yes      |  Yes  |
+| **Composites** | StatCard, FrostAlertBanner, SeasonBadge |  Parent boundary   |     No      |      Loading prop      |      Yes      |      Yes      |  Yes  |
+| **Sections**   | Charts, AISummary, HourlyForecast       | ChartErrorBoundary | LazySection |     ChartSkeleton      |      Yes      |      Yes      |  Yes  |
+| **Pages**      | WeatherDashboard, HistoryDashboard      |   page error.tsx   |     No      |      loading.tsx       |      Yes      |      Yes      |  Yes  |
 
 **Every component MUST have (at minimum):**
+
 1. **Accessibility** — `aria-labelledby` with heading IDs, `aria-hidden` on decorative elements, `role` on skeletons, 56px minimum touch targets, ARIA landmarks on layout components (`role="banner"`, `role="navigation"`, `role="contentinfo"`), `aria-current="page"` on active nav links
 2. **Global styles only** — Tailwind classes backed by CSS custom properties from `globals.css`; NEVER hardcoded hex/rgba/inline styles
 3. **Tests** — co-located `.test.ts` files for all logic, data preparation, utilities
 
-**Section-level components MUST additionally have:**
-4. **Error boundary** — `ChartErrorBoundary` wrapping each section; a section crash never takes down the page
-5. **Lazy loading** — `LazySection` with skeleton fallback; only ONE section mounts at a time (sequential queue)
-6. **Skeleton placeholder** — aspect-matched loading placeholder shown before the section enters viewport
-7. **Memory management** — bidirectional lazy loading (unmount when far off-screen), Canvas rendering (single DOM element per chart)
-8. **API resilience** — external API calls protected by circuit breakers (`api/py/_circuit_breaker.py`) to prevent cascade failures
+**Section-level components MUST additionally have:** 4. **Error boundary** — `ChartErrorBoundary` wrapping each section; a section crash never takes down the page 5. **Lazy loading** — `LazySection` with skeleton fallback; only ONE section mounts at a time (sequential queue) 6. **Skeleton placeholder** — aspect-matched loading placeholder shown before the section enters viewport 7. **Memory management** — bidirectional lazy loading (unmount when far off-screen), Canvas rendering (single DOM element per chart) 8. **API resilience** — external API calls protected by circuit breakers (`api/py/_circuit_breaker.py`) to prevent cascade failures
 
 **Chart component pattern:**
+
 ```
 TimeSeriesChart (shared Canvas base — series configs, axes, tooltips)
     ↓ imported by
@@ -441,6 +438,7 @@ LazySection(fallback=<ChartSkeleton />) + ChartErrorBoundary
 ```
 
 **Rules:**
+
 - Components import from the layer below, never sideways or upward
 - Each chart component is a standalone file in `src/components/weather/charts/`
 - Dashboards NEVER hardcode chart rendering logic — import chart components
@@ -462,6 +460,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 **CORS:** Restricted to `https://weather.mukoko.com` and `http://localhost:3000` (not wildcard).
 
 **Rate limiting:** MongoDB-backed IP rate limiter (`check_rate_limit` in `_db.py`). Per-endpoint limits:
+
 - `/api/py/chat` — 20 req/hour
 - `/api/py/ai/followup` — 30 req/hour
 - `/api/py/explore/search` — 15 req/hour
@@ -481,11 +480,13 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 **State machine:** CLOSED → OPEN → HALF_OPEN → CLOSED (on success) or OPEN (on failure)
 
 **Per-provider singleton breakers:**
+
 - `tomorrow_breaker` — Tomorrow.io API (3 failures / 2min cooldown / 5min window / 5s timeout)
 - `open_meteo_breaker` — Open-Meteo API (5 failures / 5min cooldown / 5min window / 8s timeout)
 - `anthropic_breaker` — Anthropic Claude API (3 failures / 5min cooldown / 10min window / 15s timeout)
 
 **Key classes:**
+
 - `CircuitBreaker` — state machine with `execute()` (async), `record_success()`, `record_failure()`, `reset()`, `is_allowed` (property)
 - `CircuitOpenError` — raised when circuit is open, includes provider name
 - `CircuitBreakerConfig` — per-provider configuration (failure_threshold, cooldown_s, window_s, timeout_s)
@@ -493,6 +494,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 **In-memory state:** `dict[str, _CircuitState]` persists across Vercel warm function starts (~5-15 minutes).
 
 **Integration pattern:** All Python endpoints that call external APIs use the circuit breaker:
+
 - `_weather.py` — `tomorrow_breaker` + `open_meteo_breaker` (record-based: `is_allowed` / `record_success()` / `record_failure()`)
 - `_chat.py` — `anthropic_breaker` (guard before tool-use loop, falls back to error response)
 - `_ai.py` — `anthropic_breaker` (guard before Claude call, falls back to basic weather summary)
@@ -579,6 +581,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 `src/lib/observability.ts` provides structured error logging and client-side error reporting.
 
 **Server-side (structured logging):**
+
 - `logError(ctx)` — JSON-structured error to stdout (parseable by Vercel Log Drains, Datadog, etc.)
 - `logWarn(ctx)` — structured warning with same format
 - Context fields: `source` (ErrorSource), `severity` (ErrorSeverity), `location`, `message`, `error`, `meta`
@@ -586,16 +589,19 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - Severity levels: `low`, `medium`, `high`, `critical`
 
 **Client-side (GA4 error reporting):**
+
 - `reportErrorToAnalytics(description, fatal)` — sends GA4 `exception` events via `gtag()`
 - `reportProviderFailure(provider, errorType, location?)` — tracks weather provider failures as GA4 events
 - Used in `ChartErrorBoundary` (`componentDidCatch`), all three `error.tsx` pages, and API routes
 
 **Webhook alerting (optional):**
+
 - `sendAlert(ctx)` — sends HTTP POST to `ALERT_WEBHOOK_URL` for high/critical severity errors
 - Supports Slack incoming webhooks, Discord webhooks, PagerDuty, and compatible services
 - Three-tier alerting: (1) structured JSON logs to stdout, (2) GA4 exception events, (3) webhook alerts for critical/high severity
 
 **Usage across API routes (Python backend):**
+
 - `/api/py/weather` — logs errors on unexpected failures, fallback warnings
 - `/api/py/ai` — logs on AI service unavailability
 - `/api/py/chat` — logs chatbot errors, tool execution failures
@@ -608,6 +614,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 **Seed locations:** 265 total seed locations — 98 Zimbabwe locations in `src/lib/locations.ts` (`SEED_LOCATIONS_ZW`) plus 167 global cities in `src/lib/locations-global.ts` (imported as `GLOBAL_LOCATIONS`, merged into `LOCATIONS`). Tags include: `city`, `farming`, `mining`, `tourism`, `education`, `border`, `travel`, `national-park`. **Slug format note:** Global seed locations and all new community locations use `"{city}-{country}"` format (e.g., `"nairobi-ke"`, `"bangkok-th"`). The 98 legacy ZW seed locations use short slugs without the country suffix (e.g., `"harare"`, `"bulawayo"`). A future migration will normalize ZW slugs to `"{city}-zw"` format — until then, both formats coexist and `_generate_slug` in `api/py/_locations.py` appends the suffix for all new locations including ZW.
 
 **Location validation rules (global-first):**
+
 - **All locations**: require `slug`, `name`, `province`, `lat`, `lon`, `elevation`, `tags`, and `country` (ISO 3166-1 alpha-2). New locations use `{city}-{country_lowercase}` slug format (e.g., `nairobi-ke`, `bangkok-th`); legacy ZW seed locations use short slugs (e.g., `harare`). Coordinates validated within global bounds (-90/90 lat, -180/180 lon).
 - **Source field:** `"seed"` for curated data, `"community"` for user-submitted, `"geolocation"` for auto-detected.
 
@@ -638,14 +645,15 @@ Key functions: `getLocationBySlug(slug)`, `searchLocationsFromDb(query, options)
 `src/lib/activities.ts` defines 50+ activities across 6 broadened categories covering industries and lifestyles worldwide. Activities extend the LocationTag system with user-activity categories.
 
 **Categories (broadened labels, same IDs for backward compat):**
-| Category ID | Display Label | Covers |
-|-------------|---------------|--------|
-| `farming` | Agriculture & Forestry | Crops, livestock, horticulture, forestry, beekeeping, aquaculture, irrigation |
-| `mining` | Industry & Construction | Mining, construction, manufacturing, energy, logistics |
-| `travel` | Transport & Logistics | Driving, commuting, flying, trucking, marine shipping |
-| `tourism` | Outdoors & Conservation | Safari, camping, conservation, wildlife research, hiking, fishing, stargazing |
-| `sports` | Sports & Fitness | Football, rugby, cricket, athletics, coaching, swimming, cycling, horse riding |
-| `casual` | Lifestyle & Events | Festivals, weddings, education, health/wellness, drone flying, picnics |
+
+| Category ID | Display Label           | Covers                                                                         |
+| ----------- | ----------------------- | ------------------------------------------------------------------------------ |
+| `farming`   | Agriculture & Forestry  | Crops, livestock, horticulture, forestry, beekeeping, aquaculture, irrigation  |
+| `mining`    | Industry & Construction | Mining, construction, manufacturing, energy, logistics                         |
+| `travel`    | Transport & Logistics   | Driving, commuting, flying, trucking, marine shipping                          |
+| `tourism`   | Outdoors & Conservation | Safari, camping, conservation, wildlife research, hiking, fishing, stargazing  |
+| `sports`    | Sports & Fitness        | Football, rugby, cricket, athletics, coaching, swimming, cycling, horse riding |
+| `casual`    | Lifestyle & Events      | Festivals, weddings, education, health/wellness, drone flying, picnics         |
 
 **Key functions:** `getActivitiesByCategory(category)`, `getActivityById(id)`, `getActivityLabels(ids)`, `getRelevantActivities(locationTags, selectedIds)`, `getDefaultActivitiesForLocation(locationTags, limit)`, `searchActivities(query)`
 
@@ -692,6 +700,7 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 ### Weather Data
 
 **Tomorrow.io (primary):** `src/lib/tomorrow.ts` — Tomorrow.io API client, weather code mapping, and response normalization to the existing `WeatherData` interface.
+
 - `fetchWeatherFromTomorrow(lat, lon, apiKey)` — fetches forecast (hourly + daily) and normalizes
 - `tomorrowCodeToWmo(code)` — maps Tomorrow.io weather codes to WMO codes
 - `normalizeTomorrowResponse(data)` — converts Tomorrow.io response to `WeatherData`
@@ -699,6 +708,7 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 - Free tier limits: 500 calls/day, 25/hour, 3/second; 5-day forecast
 
 **Open-Meteo (fallback):** `src/lib/weather.ts` — Open-Meteo client and pure utility functions:
+
 - `fetchWeather(lat, lon)` — API call (7-day forecast, no auth required)
 - `checkFrostRisk(hourly)` — frost detection (temps <= 3°C between 10pm-8am)
 - `weatherCodeToInfo(code)` — WMO code to label/icon
@@ -708,6 +718,7 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 - `synthesizeOpenMeteoInsights(data)` — constructs a `WeatherInsights` object from Open-Meteo data (wind speed, gusts, visibility) for suitability evaluation
 
 **Weather labels:** `src/lib/weather-labels.ts` — extracted contextual label helpers for weather metrics:
+
 - `humidityLabel(h)` — Dry / Comfortable / Humid / Very humid
 - `pressureLabel(p)` — Low / Normal / High
 - `cloudLabel(c)` — Clear / Mostly clear / Partly cloudy / Mostly cloudy / Overcast
@@ -723,6 +734,7 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 4. **Seasonal estimate** (never fails)
 
 The endpoint sets three response headers so callers can verify which source served what:
+
 - `X-Cache` — `HIT` | `MISS` (cache status for the forecast data)
 - `X-Weather-Provider` — origin of the **hourly/daily forecast** (`tomorrow` | `open-meteo` | `fallback`)
 - `X-Current-Source` — origin of the **`current` block** (`stationkit` | `tomorrow` | `open-meteo` | `fallback`)
@@ -747,6 +759,7 @@ weather.stationObservations → QC pipeline → weather.observations
 ### State Management (Zustand)
 
 `src/lib/store.ts` exports `useAppStore` with:
+
 - `theme: "light" | "dark" | "system"` — defaults to `"system"` (follows OS `prefers-color-scheme`), persisted to localStorage, synced to server
 - `setTheme(theme)` — explicitly set a theme preference
 - `toggleTheme()` — cycles through light → dark → system
@@ -769,17 +782,20 @@ weather.stationObservations → QC pipeline → weather.observations
 - `openReportModal()` / `closeReportModal()` — toggle the report modal
 
 **ShamwariContext** (`interface ShamwariContext`):
+
 - `source: "location" | "explore" | "history"` — which page set the context
 - Optional fields: `locationSlug`, `locationName`, `province`, `weatherSummary`, `temperature`, `condition`, `season`, `historyDays`, `historyAnalysis`, `exploreQuery`
 - `activities: string[]` — user's selected activities
 - `timestamp: number` — context expires after 10 minutes (`isShamwariContextValid()`)
 
 **Persistence:**
+
 - Uses Zustand `persist` middleware with `partialize` — `theme`, `selectedLocation`, `savedLocations`, `selectedActivities`, and `hasOnboarded` are saved to localStorage under key `mukoko-weather-prefs`
 - `myWeatherOpen`, `savedLocationsOpen`, `shamwariContext`, and `reportModalOpen` are transient (reset on page load)
 - `onRehydrateStorage` callback applies the persisted theme to the DOM on load
 
 **Device Sync:**
+
 - `src/lib/device-sync.ts` bridges Zustand localStorage with the Python device profile API (`/api/py/devices`)
 - **Hybrid approach:** localStorage is the primary read source (instant), MongoDB is the persistence layer (recoverable)
 - Changes are synced to server on mutation (debounced 1.5s via `queueSync`)
@@ -790,6 +806,7 @@ weather.stationObservations → QC pipeline → weather.observations
 - `initializeDeviceSync()` is called once on client-side app load after Zustand rehydrates
 
 **Theme system:**
+
 - `resolveTheme(pref)` — resolves `"system"` to `"light"` or `"dark"` based on `matchMedia('(prefers-color-scheme: dark)')`
 - `ThemeProvider` listens for OS theme changes when in `"system"` mode and updates `data-theme` on `<html>` in real time
 - Theme can be set via the Settings tab in the My Weather modal (light/dark/system radio group)
@@ -801,6 +818,7 @@ CSS custom properties are defined in `src/app/globals.css` (Brand System v6). Co
 
 **Mineral Color System:**
 Each activity category has a dedicated mineral color, defined as CSS custom properties with light and dark variants:
+
 - **Farming** → Malachite (`--mineral-malachite`)
 - **Mining** → Terracotta (`--mineral-terracotta`)
 - **Travel** → Cobalt (`--mineral-cobalt`)
@@ -812,6 +830,7 @@ Category styles are centralized in `CATEGORY_STYLES` (`src/lib/activities.ts`) w
 
 **Severity / Status Color System:**
 For weather alerts, status indicators, and severity levels, use the semantic severity tokens defined in `globals.css`:
+
 - `--color-severity-low` → safe/operational/none (green/malachite in light, bright green in dark)
 - `--color-severity-moderate` → mild/moderate (gold/warmth in light, amber in dark)
 - `--color-severity-high` → high/medium (burnt orange in light, orange in dark)
@@ -823,18 +842,21 @@ Use these via Tailwind: `text-severity-low`, `bg-severity-severe/10`, `border-se
 Never use generic Tailwind colors (`text-green-600`, `text-red-500`, `bg-amber-500`) — always use severity tokens or brand tokens.
 
 **Third-party Brand Color Tokens:**
+
 - `--color-bmc` → Buy Me a Coffee official brand yellow (`#FFDD00`)
 - `--color-bmc-fg` → dark text for BMC yellow backgrounds (`#1A1A1A`)
 
 Use via Tailwind: `bg-bmc`, `border-bmc/40`, `text-bmc-fg`, `ring-bmc`, etc. Used by `SupportBanner` component.
 
 **Typography tokens:**
+
 - `--text-body: 1rem` (16px) — base body/footer text
 - `--text-body-lg: 1.125rem` (18px) — larger body text variant
 - `--text-body-leading: 1.6` — body text line height
 - `--text-nav-label: 0.625rem` (10px) — mobile bottom nav labels (matches iOS/Android native nav conventions)
 
 **Animation system:**
+
 - `.stagger-children` — CSS class for staggered child entrance animations (fade-in-up with 50ms delay per child, up to 8 children)
 - `--animate-fade-in`, `--animate-fade-in-up`, `--animate-fade-in-down`, `--animate-scale-in` — entrance animation tokens registered in `@theme` block
 - `.card-interactive` — hover shadow + active scale effect for clickable cards
@@ -843,6 +865,7 @@ Use via Tailwind: `bg-bmc`, `border-bmc/40`, `text-bmc-fg`, `ring-bmc`, etc. Use
 
 **Skeleton Primitives:**
 Reusable skeleton components in `src/components/ui/skeleton.tsx`:
+
 - `Skeleton` — generic pulsing block (base building block)
 - `CardSkeleton` — card-shaped with title + content lines
 - `ChartSkeleton` — aspect-ratio-matched chart placeholder
@@ -851,12 +874,14 @@ Reusable skeleton components in `src/components/ui/skeleton.tsx`:
 - `ChatSkeleton` — matches ExploreChatbot container shape (used as Suspense fallback)
 
 Aspect-matched section skeletons in `src/components/weather/SectionSkeleton.tsx`:
+
 - `SectionSkeleton` — generic fallback (h-32 pulsing card)
 - `ReportsSkeleton`, `HourlyForecastSkeleton`, `ActivityInsightsSkeleton`, `DailyForecastSkeleton`, `AISummarySkeleton`, `AISummaryChatSkeleton`, `AtmosphericSummarySkeleton`, `SunTimesSkeleton`, `MapPreviewSkeleton`, `SupportBannerSkeleton`, `LocationInfoSkeleton` — each mirrors the shape of its corresponding component to prevent layout shift
 
 All skeletons include `role="status"` and `aria-label="Loading"` for screen readers. The `sr-only` span is optional when `aria-label` is present — both achieve the same result for assistive technology, so `aria-label` alone is sufficient.
 
 **Rules:**
+
 - Never use hardcoded hex colors, rgba(), or inline `style={{}}` in components — use Tailwind classes backed by CSS custom properties
 - **Exception: `src/app/api/og/route.tsx`** — The OG image route uses `next/og` (Satori) which renders via a canvas, not the browser DOM. CSS custom properties and Tailwind are not supported. All styles in this file MUST use inline `style={{}}` with hex values from the `brand` token object at the top of the file. Keep these values in sync with `globals.css` brand tokens. The OG image renders a mineral accent stripe (tanzanite → cobalt → malachite → gold → terracotta) matching the app's `MineralsStripe` component. Avoid `width: "fit-content"` and other CSS properties not supported by Satori
 - **Exception: `src/lib/weather-scenes/scenes/*.ts`** — Three.js WebGL requires raw hex colors (`0xRRGGBB`) for materials, lights, and fog. CSS custom properties don't work in WebGL shaders/materials. Hardcoded hex values in scene builder files are a documented exception to the "no hardcoded styles" rule
@@ -883,6 +908,7 @@ All skeletons include `role="status"` and `aria-label="Loading"` for screen read
 All AI system prompts, suggested prompt rules, and model configurations are stored in MongoDB and served via `GET /api/py/ai/prompts`. This allows updating AI behavior without code changes.
 
 **Collections:**
+
 - `ai_prompts` — system prompts keyed by `promptKey` (e.g., `system:weather_summary`, `system:history_analysis`, `system:explore_search`, `system:report_clarification`, `greeting:location`, `greeting:explore`, `greeting:history`). Each document has: `promptKey`, `template` (with `{variable}` placeholders), `model`, `maxTokens`, `active`, `updatedAt`
 - `ai_suggested_rules` — dynamic suggested prompt rules. Each rule has: `ruleKey`, `condition` (weather field + operator + threshold), `prompt` (template with `{location}` placeholders), `category` (weather/activity/general), `priority`, `active`. Condition operators: `gt`, `gte`, `lt`, `lte`, `eq`, `in`. The `in` operator checks if any user-selected activity matches an array of activity IDs (source: `"activities"`) or if a weather value falls within an array (source: `"weather"` or `"hourly"`)
 
@@ -895,6 +921,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 ### Caching Strategy
 
 **Server-side (MongoDB):**
+
 - Weather cache: 15-min TTL (auto-expires via TTL index)
 - AI summaries: tiered TTL — 30 min (major cities), 60 min (mid-tier), 120 min (small locations)
 - Weather history: unlimited retention (recorded on every fresh API fetch)
@@ -904,6 +931,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 - AI prompts: 5-min in-memory cache in Python endpoints (`_ai_prompts.py`, `_reports.py`, `_history_analyze.py`)
 
 **Client-side:**
+
 - No weather data caching — every page load fetches fresh weather data from the server
 - User preferences (theme + selected activities) are persisted to localStorage via Zustand `persist` middleware under key `mukoko-weather-prefs`
 - Suitability rules: 10-min TTL cache in `src/lib/suitability-cache.ts` (fetched from `/api/py/suitability`)
@@ -913,6 +941,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 ### i18n
 
 `src/lib/i18n.ts` provides lightweight translation without a heavy library:
+
 - `t(key, params?, locale)` — translation lookup with `{param}` interpolation
 - `formatTemp()`, `formatWindSpeed()`, `formatPercent()`, `formatTime()`, `formatDayName()`, `formatDate()` — Intl API-based formatting
 - English (`en`) fully implemented; Shona (`sn`) and Ndebele (`nd`) structurally ready
@@ -945,23 +974,24 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 **Custom event tracking:** `src/lib/analytics.ts` — centralized utility that fires events to both GA4 and Vercel Analytics via a single `trackEvent(name, properties)` call. Type-safe event names and property shapes. No-ops on server, silently swallows errors so tracking never breaks the app.
 
 **Tracked events:**
-| Event | Trigger | Properties |
-|-------|---------|------------|
-| `report_submitted` | Weather report wizard complete | type, severity, location |
-| `report_upvoted` | Community report upvote | reportId, location |
-| `location_changed` | User navigates to different location | from, to, method (saved/geolocation/search) |
-| `location_saved` | Location added to saved list | slug |
-| `location_removed` | Location removed from saved list | slug |
-| `activity_toggled` | Activity enabled/disabled | activityId, enabled |
-| `theme_changed` | Theme preference changed | theme |
-| `ai_summary_loaded` | AI summary fetched for location | location |
-| `ai_chat_sent` | Message sent in AI chat | source, location? |
-| `explore_search` | Explore search performed | query, resultCount |
-| `history_analysis` | Historical analysis triggered | location, days |
-| `geolocation_result` | Home page geolocation resolved | status, location? |
-| `map_layer_changed` | Weather map layer switched | layer, location |
-| `onboarding_completed` | Welcome banner action taken | method |
-| `modal_opened` | Modal opened | modal |
+
+| Event                  | Trigger                              | Properties                                  |
+| ---------------------- | ------------------------------------ | ------------------------------------------- |
+| `report_submitted`     | Weather report wizard complete       | type, severity, location                    |
+| `report_upvoted`       | Community report upvote              | reportId, location                          |
+| `location_changed`     | User navigates to different location | from, to, method (saved/geolocation/search) |
+| `location_saved`       | Location added to saved list         | slug                                        |
+| `location_removed`     | Location removed from saved list     | slug                                        |
+| `activity_toggled`     | Activity enabled/disabled            | activityId, enabled                         |
+| `theme_changed`        | Theme preference changed             | theme                                       |
+| `ai_summary_loaded`    | AI summary fetched for location      | location                                    |
+| `ai_chat_sent`         | Message sent in AI chat              | source, location?                           |
+| `explore_search`       | Explore search performed             | query, resultCount                          |
+| `history_analysis`     | Historical analysis triggered        | location, days                              |
+| `geolocation_result`   | Home page geolocation resolved       | status, location?                           |
+| `map_layer_changed`    | Weather map layer switched           | layer, location                             |
+| `onboarding_completed` | Welcome banner action taken          | method                                      |
+| `modal_opened`         | Modal opened                         | modal                                       |
 
 ### Feature Flags
 
@@ -970,6 +1000,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 **Flag definitions:** Code-defined `FLAGS` object with boolean defaults. All currently-shipped features are `true`. Experimental/future features (`premium_maps`, `vector_search`, `multi_language`) are `false`.
 
 **API:**
+
 - `isFeatureEnabled(flag)` — check default flag value (safe on server + client)
 - `isFeatureEnabledWithOverride(flag)` — check with localStorage override support (`ff:<flag>` keys)
 - `getFeatureFlag(flag)` — check flag with localStorage override support (safe anywhere, not a React hook)
@@ -986,6 +1017,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 - **Charts:** Reusable chart components from `src/components/weather/charts/` (Canvas 2D via Chart.js)
 
 **Dashboard metrics (7 charts + stats + table):**
+
 1. **Temperature trend** — actual high/low area chart + feels-like (apparent) temperature overlay lines
 2. **Precipitation & rain probability** — dual-axis: rainfall bars (mm) + probability line (%)
 3. **UV index & cloud cover** — dual-axis: UV bars + cloud cover line (%)
@@ -995,6 +1027,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 7. **Daylight hours** — sunrise-to-sunset duration (shown when data available)
 
 **Summary statistics (4 grouped sections):**
+
 - Temperature: avg high/low, record high/low, feels-like high/low
 - Precipitation: total rain, rainy days count, avg rain probability
 - Atmosphere: avg humidity, cloud cover, pressure, avg/peak UV with severity label
@@ -1009,6 +1042,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 **Desktop nav links** (hidden on mobile, `sm:flex`): Explore | Shamwari | History — text links with active state highlighting.
 
 **Action pill** (`bg-primary`, four 48px circular icon buttons):
+
 1. **Compass icon** — links to `/explore` (Explore locations)
 2. **Layers icon** — links to `/${selectedLocation}/map` (Weather map)
 3. **Megaphone icon** — opens the Weather Report modal (Report current weather)
@@ -1019,6 +1053,7 @@ The header also renders `WeatherReportModal` and `SavedLocationsModal` (both laz
 The header takes no props — location context comes from the URL path.
 
 **Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 5 items:
+
 1. **Weather** (home icon) → `/`
 2. **Explore** (compass icon) → `/explore`
 3. **Shamwari** (sparkles icon) → `/shamwari` — center position
@@ -1026,7 +1061,8 @@ The header takes no props — location context comes from the URL path.
 5. **My Weather** (map-pin button) → opens modal
 
 **My Weather Modal** (`src/components/weather/MyWeatherModal.tsx`): A centralized preferences modal (shadcn Dialog + Tabs) with three tabs:
-- **Location** — search input, geolocation button, tag filter pills, scrollable location list with pending-slug highlighting. Selecting a location sets it as *pending* (does not navigate immediately).
+
+- **Location** — search input, geolocation button, tag filter pills, scrollable location list with pending-slug highlighting. Selecting a location sets it as _pending_ (does not navigate immediately).
 - **Activities** — category tabs (mineral-colored), search, 2-column activity grid with toggle selection. Uses `CATEGORY_STYLES` for consistent mineral color theming. Auto-scrolls into view after location selection.
 - **Settings** — theme radio group (light/dark/system) with visual indicators.
 
@@ -1037,6 +1073,7 @@ The header takes no props — location context comes from the URL path.
 **Saved Locations Modal** (`src/components/weather/SavedLocationsModal.tsx`): A full-screen dialog (100dvh on mobile, auto-sized on desktop) for browsing, managing, and adding saved locations — up to `MAX_SAVED_LOCATIONS` (10).
 
 **Features:**
+
 - **Current location detection** — geolocation button with feedback states (detecting, denied, error), option to save detected location
 - **Saved locations list** — displays saved location slugs with province context, checkmark for currently-viewed location, trash icon per location for removal. Shows loading skeleton while fetching location details; falls back to title-cased slug display if API lookup fails
 - **Add location search** — debounced search input (via shared `useDebounce` hook from `@/lib/use-debounce`) calling `/api/py/search`, filters out already-saved slugs, disabled at capacity
@@ -1051,6 +1088,7 @@ The header takes no props — location context comes from the URL path.
 `src/lib/weather-scenes/` — weather-aware Three.js particle animation system for loading screens.
 
 **Architecture:**
+
 - `types.ts` — `WeatherSceneType` (8 types: clear, partly-cloudy, cloudy, rain, thunderstorm, fog, snow, windy), `WeatherSceneConfig`, `CachedWeatherHint`, `SceneBuilder`
 - `create-scene.ts` — Three.js scene factory: creates renderer, camera, ambient/directional lights, calls the appropriate scene builder, returns an animation loop + cleanup
 - `resolve-scene.ts` — maps WMO weather codes to `WeatherSceneType` (supports day/night variants)
@@ -1058,6 +1096,7 @@ The header takes no props — location context comes from the URL path.
 - `scenes/` — 8 builder modules, each adding particle systems to the Three.js scene (sun orbs, cloud particles, rain drops, lightning flashes, fog wisps, snow flakes, wind streaks)
 
 **Integration:** `src/components/weather/WeatherLoadingScene.tsx` — branded loading overlay used by:
+
 - `src/app/HomeRedirect.tsx` — home page redirect (shows "Finding your location...")
 - `src/app/[location]/loading.tsx` — location page loading (shows location-aware weather animation)
 
@@ -1072,6 +1111,7 @@ The header takes no props — location context comes from the URL path.
 `src/app/HomeRedirect.tsx` — client component that replaces a static redirect with location-aware routing.
 
 **Redirect logic (priority order):**
+
 1. **Always attempt geolocation** — browser GPS via `detectUserLocation()` with 3s timeout
 2. **If geolocation succeeds** → redirect to detected location
 3. **If geolocation fails** → fall back to first saved location, then selected location, then `/explore`
@@ -1079,6 +1119,7 @@ The header takes no props — location context comes from the URL path.
 This geo-first approach mirrors Apple Weather / Google Weather behavior — the home page always tries to show your current physical location.
 
 **Key implementation details:**
+
 - Waits for Zustand `persist` rehydration before reading state (uses `hasStoreHydrated()` from `store.ts`) to avoid acting on default values before localStorage loads. A 4s max-wait timeout (`HYDRATION_TIMEOUT_MS`) prevents infinite polling if Zustand persist middleware never fires (e.g., corrupt localStorage)
 - Fallback location is read at decision time (inside `.then()`/`.catch()` callbacks via `useAppStore.getState()`) so device sync changes during the 3s geo wait are reflected
 - Uses `router.replace()` so the home page doesn't appear in browser history
@@ -1090,6 +1131,7 @@ This geo-first approach mirrors Apple Weather / Google Weather behavior — the 
 All pages use a **TikTok-style sequential mounting** pattern — only ONE section mounts at a time via a global FIFO queue. This caps peak memory regardless of how many sections exist.
 
 `LazySection` (`src/components/weather/LazySection.tsx`) provides:
+
 1. **Sequential mount queue** — global FIFO queue mounts ONE component at a time with rAF + settle delay (150ms mobile, 50ms desktop) between mounts
 2. **Bidirectional visibility** — sections mount when entering viewport (100-300px margin) and UNMOUNT when scrolling 1500px past viewport to reclaim memory
 3. **Adaptive timing** — mobile gets longer settle delays than desktop
@@ -1097,6 +1139,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 5. **Memory pressure monitoring** — `useMemoryPressure()` hook monitors `performance.memory` for JS heap pressure
 
 **Location page — `CurrentConditions` and `AtmosphericSummary` load eagerly.** All other sections are lazy:
+
 - `HourlyScrollCards` → `ChartErrorBoundary` (eager)
 - `CurrentConditions` → `ChartErrorBoundary` (eager — big temp, feels-like, daily high/low)
 - `AtmosphericSummary` → `ChartErrorBoundary` (eager — 7 gauge cards: humidity, cloud, wind, pressure, UV, feels-like, precipitation)
@@ -1112,10 +1155,12 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 - Location info card → `LazySection`
 
 **History page — only the search/filters and summary stats load eagerly.** All charts and the data table are lazy:
+
 - All 7 charts → `LazySection(fallback=<ChartSkeleton />)` + `ChartErrorBoundary` each
 - Daily records data table → `LazySection(fallback=<ChartSkeleton />)` with infinite scroll
 
 **Canvas rendering optimizations:**
+
 - Chart.js Canvas 2D rendering — single `<canvas>` DOM element per chart (not thousands of SVG nodes)
 - Mobile: `devicePixelRatio: 1`, `animation: false`, data downsampling for large datasets (>60 points on mobile)
 - CSS variable resolution via `resolveColor()` — Chart.js needs concrete values, not `var(--chart-1)`
@@ -1136,6 +1181,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 `src/components/weather/AtmosphericDetails.tsx` — orchestrates four chart components for 24-hour hourly atmospheric views. Used by the `/${slug}/atmosphere` sub-route page and the history page (via `LazyAtmosphericDetails`). Not rendered on the main location page.
 
 **Imports chart components from `src/components/weather/charts/`:**
+
 1. `HumidityCloudChart` — humidity area + cloud cover dashed line, 0–100%
 2. `WindSpeedChart` — wind area + gusts dashed line, km/h (auto-scaled)
 3. `PressureChart` — pressure line with auto-scaled Y axis, hPa
@@ -1148,6 +1194,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Route:** `/shamwari` — full-viewport AI chat (Claude app style). The chatbot fills the screen between the sticky header and mobile bottom nav. Chat input is fixed above the mobile navigation bar.
 
 **Components:**
+
 - `src/app/shamwari/page.tsx` — server wrapper (metadata, Header only — no Footer for max chat space)
 - `src/app/shamwari/ShamwariPageClient.tsx` — client: full-viewport layout (`100dvh - header`), bottom padding for mobile nav (`pb-[4.5rem] sm:pb-0`)
 - `src/components/explore/ExploreChatbot.tsx` — reusable chat UI: message bubbles, typing indicator, contextual suggested prompts, markdown rendering, location reference links
@@ -1155,6 +1202,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Contextual navigation:** On mount, `ExploreChatbot` checks `useAppStore.shamwariContext`. If present and not expired (10 min), it generates a contextual greeting and location-specific suggested prompts based on the source page (location/explore/history). Context is consumed once and cleared after use. Greetings and prompts are fetched from the database-driven AI prompt library with hardcoded fallbacks.
 
 **API:** `POST /api/py/chat` — Claude-powered chatbot with tool use. Rate-limited to 20 requests/hour/IP.
+
 - **Tools:** `search_locations`, `get_weather`, `get_activity_advice`, `list_locations_by_tag`
 - **Input validation:** message required (string, max 2000 chars), history capped at 10 messages (both user and assistant truncated via `truncateHistoryContent` to 2000 chars), activities array (user's selected activities from Zustand store) capped at 20 items and injected into system prompt for personalised advice, location slugs validated via `SLUG_RE` (`/^[a-z0-9-]{1,80}$/`), tags validated against database-driven `get_known_tags()` allowlist
 - **Security:** IP required (rejects unknown), structured messages API (boundary markers have no special meaning — no regex needed), system prompt DATA GUARDRAILS, history length caps
@@ -1167,11 +1215,13 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Route:** `/explore` — location browsing by category/country (ISR 1h) + AI-powered natural-language search.
 
 **Components:**
+
 - `src/app/explore/page.tsx` — server component (ISR 1h), fetches tag counts and featured tags, renders AI search + Shamwari CTA card + category browse grid + country browse link
 - `src/components/explore/ExploreSearch.tsx` — client component: natural-language search input (e.g., "farming areas with low frost risk"), results render as location cards with inline weather data. "Ask Shamwari for more" link sets `ShamwariContext` with `source: "explore"` + `exploreQuery`
 - **API:** `POST /api/py/explore/search` — uses Claude with `search_locations` + `get_weather` tools. Falls back to text search if AI unavailable. Rate-limited 15 req/hour/IP
 
 **Sub-routes:**
+
 - `/explore/[tag]` — locations filtered by tag, server-rendered
 - `/explore/country` — country index page with flag emoji
 - `/explore/country/[code]` — locations in a country, grouped by province
@@ -1189,10 +1239,12 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 **Severity levels (3):** mild (24h TTL), moderate (48h TTL), severe (72h TTL)
 
 **Components:**
+
 - `src/components/weather/reports/WeatherReportModal.tsx` — 3-step dialog wizard: select type (grid of icons) → AI clarification (1-2 follow-up questions) → confirm (summary + severity + submit). Uses shadcn Dialog, triggered via `reportModalOpen` store state
 - `src/components/weather/reports/RecentReports.tsx` — shows recent community reports on location pages. Compact cards with type icon, severity badge, verified badge, time ago, upvote button. Includes "Report Weather" trigger
 
 **API endpoints:**
+
 - `POST /api/py/reports` — submit report (rate-limited 5/hour/IP, auto-captures weather snapshot for cross-validation)
 - `GET /api/py/reports?location=<slug>&hours=<n>` — list recent reports for a location
 - `POST /api/py/reports/upvote` — upvote a report (IP-based dedup)
@@ -1205,6 +1257,7 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 ### Status Page
 
 **Route:** `/status` — live system health dashboard.
+
 - `src/app/status/page.tsx` — server wrapper (metadata)
 - `src/app/status/StatusDashboard.tsx` — client component, calls `GET /api/py/status`
 - Checks: MongoDB connectivity, Tomorrow.io API key, Open-Meteo availability, Anthropic API key, weather cache health
@@ -1213,6 +1266,7 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 ## Testing
 
 **TypeScript (Vitest 4.0.18)** — configured in `vitest.config.ts`
+
 - Environment: Node
 - Global test APIs enabled
 - Test glob: `src/**/*.test.ts`
@@ -1221,6 +1275,7 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 - Coverage command: `npm run test:coverage`
 
 **Python (pytest 8.3)** — configured in `pytest.ini`
+
 - Test directory: `tests/py/`
 - Shared fixtures in `tests/py/conftest.py` (mock_request, pymongo/anthropic mocking)
 - `conftest.py` evicts the system `py` module and mocks `pymongo`/`anthropic` so tests run without MongoDB or Anthropic connectivity
@@ -1228,7 +1283,8 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 
 **Test files:**
 
-*Library tests:*
+_Library tests:_
+
 - `src/lib/weather.test.ts` — frost detection, season logic, wind direction, UV levels, fallback weather, synthesizeOpenMeteoInsights
 - `src/lib/weather-labels.test.ts` — humidity/pressure/cloud/precipitation/feels-like label helpers
 - `src/lib/locations.test.ts` — location searching, tag filtering, nearest location
@@ -1257,13 +1313,15 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 - `src/lib/weather-scenes/create-scene.test.ts` — scene factory (exports, dispose, scene types, fallback, cleanup)
 - `src/lib/weather-scenes/resolve-scene.test.ts` — weather code → scene type mapping (WMO codes, day/night, edge cases)
 
-*TypeScript API route tests (remaining):*
+_TypeScript API route tests (remaining):_
+
 - `src/app/api/og/og-route.test.ts` — OG image route (templates, brand tokens, rate limiting, metadata wiring in layout + location pages)
 - `src/app/api/db-init/db-init-route.test.ts` — DB init route
 
-*Note:* All other API routes have been migrated to Python (`api/py/`). Python backend tests should use pytest (see below).
+_Note:_ All other API routes have been migrated to Python (`api/py/`). Python backend tests should use pytest (see below).
 
-*Python backend tests (pytest):*
+_Python backend tests (pytest):_
+
 - `tests/py/test_circuit_breaker.py` — circuit breaker state machine (closed→open→half_open), failure window pruning, async execute with timeout, singleton breaker configs
 - `tests/py/test_db_helpers.py` — `get_client_ip` (x-forwarded-for, x-real-ip, client.host, None), `check_rate_limit` (allow/deny/boundary/composite-key/None-result)
 - `tests/py/test_chat.py` — `_build_chat_system_prompt` (location list, count, activities, fallback vs DB template, 20-location cap), SLUG_RE, KNOWN_TAGS, tool helpers (search, list_by_tag, get_weather cache, tool dispatch)
@@ -1284,7 +1342,8 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 - `tests/py/test_status.py` — System health: MongoDB/Tomorrow.io/Open-Meteo/Anthropic/cache checks, overall status aggregation
 - `tests/py/test_embeddings.py` — Embeddings stub: status endpoint shape
 
-*Page/component tests:*
+_Page/component tests:_
+
 - `src/app/seo.test.ts` — metadata generation, schema validation, canonical URL coverage (layout bleed guard, per-page canonical presence)
 - `src/app/HomeRedirect.test.ts` — HomeRedirect structure, Zustand rehydration guard (max-wait timeout), deferred fallback, redirect logic, geolocation
 - `src/app/explore/explore.test.ts` — explore page tests (browse-only, Shamwari CTA link)
@@ -1316,6 +1375,7 @@ Users can submit real-time ground-truth weather observations, similar to Waze fo
 - `src/components/weather/reports/RecentReports.test.ts` — report list, upvoting, report trigger, UI patterns
 
 **Conventions:**
+
 - TypeScript tests live next to the code they test (co-located `.test.ts` files)
 - Python tests live in `tests/py/` (named `test_*.py`, classes `Test*`, functions `test_*`)
 - TypeScript: `describe`/`it`/`expect` pattern (Vitest)
@@ -1332,7 +1392,7 @@ Before every commit, you MUST complete ALL of these steps. Do not skip any.
 4. **Run type check** — `npx tsc --noEmit` must pass with zero errors.
 5. **Run build** — `npm run build` must compile and generate all pages successfully.
 6. **Update tests** — Any new utility function, CSS class mapping, API behavior, or component logic must have corresponding tests.
-6. **Update documentation** — If your change affects any of the following, update the corresponding docs:
+7. **Update documentation** — If your change affects any of the following, update the corresponding docs:
    - Public API or routes → update README.md API section
    - Project structure (new files/directories) → update README.md project structure
    - Tech stack (new dependencies) → update README.md tech stack table and CLAUDE.md tech stack
@@ -1340,12 +1400,13 @@ Before every commit, you MUST complete ALL of these steps. Do not skip any.
    - Styling patterns or tokens → update CLAUDE.md Styling section
    - AI summary format or prompt → update CLAUDE.md AI Summaries section
    - Developer workflow → update CONTRIBUTING.md
-7. **Verify no hardcoded styles** — No new hardcoded hex colors, rgba(), or inline `style={{}}` in components.
-8. **Verify layered architecture** — New components follow the Layered Component Architecture (see above): error boundary, lazy loading, skeleton, accessibility, global styles, tests.
+8. **Verify no hardcoded styles** — No new hardcoded hex colors, rgba(), or inline `style={{}}` in components.
+9. **Verify layered architecture** — New components follow the Layered Component Architecture (see above): error boundary, lazy loading, skeleton, accessibility, global styles, tests.
 
 ## Conventions
 
 ### Component Architecture
+
 - **Layered imports** — components import from the layer below, never sideways or upward
 - **Chart components** — all chart rendering lives in `src/components/weather/charts/`; dashboards import, never hardcode
 - **Error isolation** — every section wrapped in `ChartErrorBoundary`; crashes never propagate
@@ -1354,6 +1415,7 @@ Before every commit, you MUST complete ALL of these steps. Do not skip any.
 - **API resilience** — external API calls wrapped in circuit breakers (`api/py/_circuit_breaker.py`) to prevent cascade failures
 
 ### Styling
+
 - **Global styles only** — all colors and tokens defined in `globals.css` as CSS custom properties
 - **Never hardcode** — no hex colors, rgba(), inline `style={{}}`, or dynamic Tailwind class construction
 - **Tailwind classes** — always use Tailwind utility classes backed by CSS custom properties
@@ -1366,21 +1428,22 @@ Repeated Tailwind chains (3+ uses) are extracted into named component classes in
 
 **Current palette:**
 
-| Class | Purpose | Replaces |
-|-------|---------|----------|
-| `.kudu` | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...` |
-| `.impala` | Secondary/outline pill button | `border border-border bg-transparent px-5 py-3 ...` |
-| `.bee` | Round icon button (mukoko = beehive) | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...` |
-| `.baobab` | Primary card surface | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm` |
-| `.acacia` | Quieter card surface | `rounded-card border border-border bg-surface-card p-4` |
-| `.giraffe` | Section heading (tall, stands above) | `text-base font-semibold text-text-primary font-heading` |
-| `.gazelle` | Body paragraph copy | `text-base text-text-secondary leading-relaxed` |
-| `.dove` | Muted secondary text | `text-sm text-text-tertiary` |
-| `.weaver` | Primary nav link | `inline-flex items-center text-base font-medium text-text-secondary hover:...` |
-| `.weaver-active` | Active nav link (cobalt + underline) | active variant of `.weaver` |
-| `.chameleon` | Skeleton placeholder | `animate-pulse rounded-card border border-surface-dim bg-surface-card shadow-sm` |
+| Class            | Purpose                                    | Replaces                                                                                    |
+| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `.kudu`          | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...`                                                   |
+| `.impala`        | Secondary/outline pill button              | `border border-border bg-transparent px-5 py-3 ...`                                         |
+| `.bee`           | Round icon button (mukoko = beehive)       | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...` |
+| `.baobab`        | Primary card surface                       | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm`                       |
+| `.acacia`        | Quieter card surface                       | `rounded-card border border-border bg-surface-card p-4`                                     |
+| `.giraffe`       | Section heading (tall, stands above)       | `text-base font-semibold text-text-primary font-heading`                                    |
+| `.gazelle`       | Body paragraph copy                        | `text-base text-text-secondary leading-relaxed`                                             |
+| `.dove`          | Muted secondary text                       | `text-sm text-text-tertiary`                                                                |
+| `.weaver`        | Primary nav link                           | `inline-flex items-center text-base font-medium text-text-secondary hover:...`              |
+| `.weaver-active` | Active nav link (cobalt + underline)       | active variant of `.weaver`                                                                 |
+| `.chameleon`     | Skeleton placeholder                       | `animate-pulse rounded-card border border-surface-dim bg-surface-card shadow-sm`            |
 
 **Rules:**
+
 - Add new fauna classes when a pattern is duplicated 3+ times
 - Compose fauna classes with custom utilities where needed: `<button class="kudu press-scale">`
 - Fauna classes live in `@layer components` so per-utility classes still override them
@@ -1388,6 +1451,7 @@ Repeated Tailwind chains (3+ uses) are extracted into named component classes in
 - Update once in `globals.css` — every consumer picks it up automatically
 
 ### Accessibility
+
 - **Skip-to-content link** — `<a href="#main-content" className="sr-only focus:not-sr-only ...">` in root `layout.tsx`, targets `<main id="main-content">` on each page
 - **ARIA landmarks** — Header uses `role="banner"`, navigation uses `role="navigation"` with descriptive `aria-label` (e.g., "Main navigation", "Mobile navigation", "Page navigation"), Footer uses `role="contentinfo"`
 - **Active nav state** — `aria-current="page"` on currently active navigation links (both desktop and mobile)
@@ -1401,6 +1465,7 @@ Repeated Tailwind chains (3+ uses) are extracted into named component classes in
 - **Skeletons** — all loading states include `role="status"` and `aria-label="Loading"` (`sr-only` span is optional when `aria-label` is present)
 
 ### General
+
 - Components are in `src/components/`, organized by domain (`brand/`, `layout/`, `weather/`, `explore/`, `embed/`)
 - Client components use `"use client"` directive
 - Server components are the default (no directive needed)
@@ -1418,31 +1483,32 @@ Every data entity MUST map to a schema.org type. The JSON-LD structured data in 
 
 **Location → `schema.org/Place`:**
 
-| `WeatherLocation` field | schema.org property | Type | Standard |
-|-------------------------|---------------------|------|----------|
-| `slug` | `identifier` | string | URL-safe slug |
-| `name` | `name` | string | — |
-| `lat` | `geo.latitude` | number | WGS 84 |
-| `lon` | `geo.longitude` | number | WGS 84 |
-| `elevation` | `geo.elevation` | QuantitativeValue | UN/CEFACT unitCode: `MTR` |
-| `province` | `address.addressRegion` | string (PostalAddress) | — |
-| `country` | `address.addressCountry` | string | ISO 3166-1 alpha-2 |
-| `tags` | `additionalType` | string[] | Internal taxonomy |
+| `WeatherLocation` field | schema.org property      | Type                   | Standard                  |
+| ----------------------- | ------------------------ | ---------------------- | ------------------------- |
+| `slug`                  | `identifier`             | string                 | URL-safe slug             |
+| `name`                  | `name`                   | string                 | —                         |
+| `lat`                   | `geo.latitude`           | number                 | WGS 84                    |
+| `lon`                   | `geo.longitude`          | number                 | WGS 84                    |
+| `elevation`             | `geo.elevation`          | QuantitativeValue      | UN/CEFACT unitCode: `MTR` |
+| `province`              | `address.addressRegion`  | string (PostalAddress) | —                         |
+| `country`               | `address.addressCountry` | string                 | ISO 3166-1 alpha-2        |
+| `tags`                  | `additionalType`         | string[]               | Internal taxonomy         |
 
 **Weather data → `schema.org/Observation`:**
 
-| Measurement | schema.org property | unitCode | unitText | Standard |
-|-------------|---------------------|----------|----------|----------|
-| Temperature | `PropertyValue` | `CEL` | °C | UN/CEFACT Rec 20 |
-| Wind speed | `PropertyValue` | `KMH` | km/h | UN/CEFACT Rec 20 |
-| Pressure | `PropertyValue` | `HPA` | hPa | UN/CEFACT Rec 20 |
-| Humidity | `PropertyValue` | `P1` | % | UN/CEFACT Rec 20 |
-| Precipitation | `PropertyValue` | `MMT` | mm | UN/CEFACT Rec 20 |
-| Wind direction | `PropertyValue` | `DD` | ° | UN/CEFACT Rec 20 |
-| Elevation | `QuantitativeValue` | `MTR` | metres | UN/CEFACT Rec 20 |
-| UV index | `PropertyValue` | — | — | WHO UV Index |
+| Measurement    | schema.org property | unitCode | unitText | Standard         |
+| -------------- | ------------------- | -------- | -------- | ---------------- |
+| Temperature    | `PropertyValue`     | `CEL`    | °C       | UN/CEFACT Rec 20 |
+| Wind speed     | `PropertyValue`     | `KMH`    | km/h     | UN/CEFACT Rec 20 |
+| Pressure       | `PropertyValue`     | `HPA`    | hPa      | UN/CEFACT Rec 20 |
+| Humidity       | `PropertyValue`     | `P1`     | %        | UN/CEFACT Rec 20 |
+| Precipitation  | `PropertyValue`     | `MMT`    | mm       | UN/CEFACT Rec 20 |
+| Wind direction | `PropertyValue`     | `DD`     | °        | UN/CEFACT Rec 20 |
+| Elevation      | `QuantitativeValue` | `MTR`    | metres   | UN/CEFACT Rec 20 |
+| UV index       | `PropertyValue`     | —        | —        | WHO UV Index     |
 
 **Other entities already mapped:**
+
 - App → `schema.org/WebApplication` (layout.tsx)
 - Company → `schema.org/Organization` (layout.tsx)
 - Site → `schema.org/WebSite` with `SearchAction` (layout.tsx)
@@ -1453,14 +1519,14 @@ Every data entity MUST map to a schema.org type. The JSON-LD structured data in 
 
 ### ISO Standards (Mandatory)
 
-| Domain | Standard | Usage |
-|--------|----------|-------|
-| Country codes | ISO 3166-1 alpha-2 | `WeatherLocation.country`, `Country.code`, `addressCountry` |
-| Date/time | ISO 8601 | All `time` arrays, `sunrise`/`sunset`, `datePublished`, `dateModified` |
-| Weather codes | WMO 4677 / 4680 | `weather_code` in hourly/daily/current data |
-| Measurement units | UN/CEFACT Rec 20 | All `unitCode` values in JSON-LD PropertyValue |
-| Language tags | IETF BCP 47 | `en-ZW`, `sn-ZW`, `nd-ZW` in i18n formatting |
-| Coordinates | WGS 84 | All `lat`/`lon` values (decimal degrees) |
+| Domain            | Standard           | Usage                                                                  |
+| ----------------- | ------------------ | ---------------------------------------------------------------------- |
+| Country codes     | ISO 3166-1 alpha-2 | `WeatherLocation.country`, `Country.code`, `addressCountry`            |
+| Date/time         | ISO 8601           | All `time` arrays, `sunrise`/`sunset`, `datePublished`, `dateModified` |
+| Weather codes     | WMO 4677 / 4680    | `weather_code` in hourly/daily/current data                            |
+| Measurement units | UN/CEFACT Rec 20   | All `unitCode` values in JSON-LD PropertyValue                         |
+| Language tags     | IETF BCP 47        | `en-ZW`, `sn-ZW`, `nd-ZW` in i18n formatting                           |
+| Coordinates       | WGS 84             | All `lat`/`lon` values (decimal degrees)                               |
 
 ### OpenAPI Compliance
 
@@ -1484,26 +1550,31 @@ The Python FastAPI backend auto-generates an **OpenAPI 3.1** specification from 
 **Business model:** All weather data is free. Premium is a single paid plan that unlocks interactive map layers.
 
 **Free tier (all users):**
+
 - Current conditions, hourly/daily forecasts, area charts
 - AI Shamwari insights
 - Frost alerts
 - Location maps with weather markers
 
 **Premium tier (single plan):**
+
 - Radar map layer (precipitation radar)
 - Cloud cover satellite map layer
 - Precipitation map layer
 - All premium map layers use Leaflet/react-leaflet with tile overlays
 
 **Authentication:** Stytch (upcoming)
+
 - Handles sign-up, login, sessions, and premium entitlement checks
 - Server-side session validation on premium API routes
 
 **Map data providers:**
+
 - **Tomorrow.io** — Radar satellite constellation with growing Africa coverage. 60+ data layers including precipitation, cloud, wind. Primary source for all premium map tile layers. API key stored in MongoDB (not env vars).
 - **Base map tiles:** Mapbox (raster tiles, proxied via `/api/py/map-tiles/base` to keep access token server-side). Theme-aware: `streets-v12` for light mode, `dark-v11` for dark mode. API key stored in MongoDB `api_keys` collection
 
 **Map technical notes:**
+
 - Leaflet/react-leaflet must be loaded as a `"use client"` component with `next/dynamic` and `ssr: false` (Leaflet requires the DOM)
 - Premium map layers are gated server-side — tile proxy routes check Stytch session before forwarding to Tomorrow.io
 
@@ -1512,8 +1583,8 @@ The Python FastAPI backend auto-generates an **OpenAPI 3.1** specification from 
 ## Environment Variables
 
 - `MONGODB_URI` — required, MongoDB Atlas connection string
-- `WORKOS_API_KEY` — required, server-side WorkOS API key (sk_...). Used by AuthKit middleware, the `/callback` handler, and `identity.persons` upsert
-- `WORKOS_CLIENT_ID` — required, WorkOS Client ID (client_...) from the WorkOS dashboard
+- `WORKOS_API_KEY` — required, server-side WorkOS API key (sk\_...). Used by AuthKit middleware, the `/callback` handler, and `identity.persons` upsert
+- `WORKOS_CLIENT_ID` — required, WorkOS Client ID (client\_...) from the WorkOS dashboard
 - `WORKOS_COOKIE_PASSWORD` — required, 32+ character secret used to encrypt/sign the session cookie. Rotating this value invalidates every existing session
 - `NEXT_PUBLIC_WORKOS_REDIRECT_URI` — required, the OAuth callback URL. Local: `http://localhost:3000/callback`. Production: `https://weather.mukoko.com/callback`. Must match the Redirect URI registered in the WorkOS dashboard
 - `ANTHROPIC_API_KEY` — optional, server-side only. Without it, a basic weather summary fallback is generated.
@@ -1527,16 +1598,16 @@ mukoko-weather uses **WorkOS AuthKit** (`@workos-inc/authkit-nextjs`) for user a
 
 ### Pieces
 
-| File | Role |
-|------|------|
-| `src/proxy.ts` | Edge middleware. Calls `authkit(request)` on every request to refresh the WorkOS session, then layers our existing `lastLocation` cookie / home-page redirect logic via `handleAuthkitProxy` (so AuthKit headers survive the redirect) |
-| `src/app/callback/route.ts` | OAuth callback handler. Wraps `handleAuth({ onSuccess })` — on a successful WorkOS exchange, calls `upsertPlatformPerson(user)` to mirror the user into `identity.persons` |
-| `src/app/auth/signin/route.ts` | Server redirect to the WorkOS-hosted sign-in URL (`getSignInUrl()`) |
-| `src/app/auth/signout/route.ts` | Server route that invokes `signOut({ returnTo: "/" })` — clears the session cookie and redirects through WorkOS logout |
-| `src/lib/auth.ts` | Server helpers: `getCurrentUser()` (returns user or null), `requireUser()` (enforces sign-in), `upsertPlatformPerson()` (the dedup-disciplined identity.persons writer). Re-exports `getSignInUrl`, `signOut` |
-| `src/components/auth/UserMenu.tsx` | Header slot — uses `useAuth()` from `@workos-inc/authkit-nextjs/components` (client). Signed-in users see a `.hoopoe` avatar + email + `Sign out` (`.impala`); anonymous users see a `Sign in` (`.kudu-sm`) link |
-| `src/components/auth/SignInButton.tsx`, `SignOutButton.tsx` | Reusable buttons that link to `/auth/signin` and `/auth/signout` respectively |
-| `src/app/layout.tsx` | Wraps the entire tree in `<AuthKitProvider initialAuth={…}>`. `initialAuth` is hydrated server-side via `withAuth()` (minus `accessToken`) so the client renders the right state on first paint with no fetch waterfall |
+| File                                                        | Role                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/proxy.ts`                                              | Edge middleware. Calls `authkit(request)` on every request to refresh the WorkOS session, then layers our existing `lastLocation` cookie / home-page redirect logic via `handleAuthkitProxy` (so AuthKit headers survive the redirect) |
+| `src/app/callback/route.ts`                                 | OAuth callback handler. Wraps `handleAuth({ onSuccess })` — on a successful WorkOS exchange, calls `upsertPlatformPerson(user)` to mirror the user into `identity.persons`                                                             |
+| `src/app/auth/signin/route.ts`                              | Server redirect to the WorkOS-hosted sign-in URL (`getSignInUrl()`)                                                                                                                                                                    |
+| `src/app/auth/signout/route.ts`                             | Server route that invokes `signOut({ returnTo: "/" })` — clears the session cookie and redirects through WorkOS logout                                                                                                                 |
+| `src/lib/auth.ts`                                           | Server helpers: `getCurrentUser()` (returns user or null), `requireUser()` (enforces sign-in), `upsertPlatformPerson()` (the dedup-disciplined identity.persons writer). Re-exports `getSignInUrl`, `signOut`                          |
+| `src/components/auth/UserMenu.tsx`                          | Header slot — uses `useAuth()` from `@workos-inc/authkit-nextjs/components` (client). Signed-in users see a `.hoopoe` avatar + email + `Sign out` (`.impala`); anonymous users see a `Sign in` (`.kudu-sm`) link                       |
+| `src/components/auth/SignInButton.tsx`, `SignOutButton.tsx` | Reusable buttons that link to `/auth/signin` and `/auth/signout` respectively                                                                                                                                                          |
+| `src/app/layout.tsx`                                        | Wraps the entire tree in `<AuthKitProvider initialAuth={…}>`. `initialAuth` is hydrated server-side via `withAuth()` (minus `accessToken`) so the client renders the right state on first paint with no fetch waterfall                |
 
 ### Sign-in flow
 
@@ -1577,14 +1648,14 @@ Redirect back to returnPathname ("/")
 
 The app is **public by default** — weather pages, explore, search, maps, and every read-only weather endpoint stay anonymous-accessible. Auth gates the AI surface and the premium feature pages.
 
-| Surface | Gate | Mechanism |
-|---|---|---|
-| `/shamwari` | Page-level | `await requireUser()` at the top of the server component → AuthKit redirects anon users to sign-in |
-| `/aviation` | Page-level | `await requireUser()` (METAR/TAF planner + PDF briefings) |
-| `/history` | Page-level | `await requireUser()` (historical analysis dashboard) |
-| `/api/ai/*` | Route-level | Next.js proxy at `src/app/api/ai/[...path]/route.ts` calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers |
+| Surface                                     | Gate            | Mechanism                                                                                                                                                                                                                                                                 |
+| ------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/shamwari`                                 | Page-level      | `await requireUser()` at the top of the server component → AuthKit redirects anon users to sign-in                                                                                                                                                                        |
+| `/aviation`                                 | Page-level      | `await requireUser()` (METAR/TAF planner + PDF briefings)                                                                                                                                                                                                                 |
+| `/history`                                  | Page-level      | `await requireUser()` (historical analysis dashboard)                                                                                                                                                                                                                     |
+| `/api/ai/*`                                 | Route-level     | Next.js proxy at `src/app/api/ai/[...path]/route.ts` calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers                                                                             |
 | `AISummary` widget on public location pages | Component-level | Receives a `user: AISummaryUser \| null` prop hydrated server-side via `getCurrentUser()` in `/[location]/page.tsx`. Anonymous users see a `.baobab` sign-in CTA (with `.kudu-sm` button → `/auth/signin?returnTo=<current>`). Signed-in users see the summary as before. |
-| `AISummaryChat` follow-up | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA. |
+| `AISummaryChat` follow-up                   | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA.                                                                                                                                                                                                |
 
 **What is NOT gated** (must remain anonymous): `/`, `/[location]/*`, `/explore`, `/explore/**`, `/api/py/weather`, `/api/py/search`, `/api/py/geo`, `/api/py/locations`, `/api/py/airquality`, `/api/py/metar`, `/api/py/map-tiles/*`, `/api/py/reports` (GET/POST), `/api/py/status`, `/api/py/health`, `/api/py/activities`, `/api/py/suitability`, `/api/py/tags`, `/api/py/regions`, `/api/py/devices`, `/api/og`, `/api/db-init`, `/embed/*`.
 
@@ -1599,6 +1670,7 @@ The app is **public by default** — weather pages, explore, search, maps, and e
 **Seed locations (code):** Add to the `LOCATIONS` array in `src/lib/locations.ts`. Include accurate GPS coordinates, elevation, province, and relevant tags. Then run `POST /api/db-init` to sync locations to MongoDB.
 
 **Community locations (dynamic):** Users can add locations at runtime via:
+
 1. **Geolocation auto-create** — browser GPS → `/api/py/geo?autoCreate=true` → reverse geocode → create
 2. **Search** — `POST /api/py/locations/add` with `{ query }` → forward geocode → pick candidate → create
 3. **Coordinates** — `POST /api/py/locations/add` with `{ lat, lon }` → reverse geocode → create
@@ -1614,16 +1686,17 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 
 **Platform databases (Phase 0B):**
 
-| DB | Mukoko collections | TS / Python accessors |
-|----|--------------------|------------------------|
-| `weather` | weather_cache, ai_summaries, weather_history, ~~locations~~ (dropped Phase 0F — use `places.placesGeo` via `src/lib/places.ts` / `api/py/_places_resolver.py`), activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, ~~countries~~ (dropped Phase 0G — use `placesGeo.geoType=country`), ~~provinces~~ (dropped Phase 0G — use `placesGeo.geoType=province`), metar_cache, rate_limits, **air_quality_cache** (NEW — 1-h TTL, _id keyed by `{lat:.4f}_{lon:.4f}`), **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()` |
-| `places` | **places**, **placesGeo**, **categories**, **routes**, **conditionReports** | `placesDb()` / `places_db()` |
-| `identity` | **persons**, **credentials**, **activityLog** | `identityDb()` / `identity_db()` |
-| `shamwari` | **conversations**, **messages**, **guardrails**, **knowledgeBase**, **preferences** | `shamwariDb()` / `shamwari_db()` |
-| `device` | **devices**, **commands**, **telemetry**, **deviceHistory**, device_profiles (legacy) | `deviceDb()` / `device_db()` |
-| `integrations` | **providers**, **providerConfigurations** | `integrationsDb()` / `integrations_db()` |
+| DB             | Mukoko collections                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | TS / Python accessors                    |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `weather`      | weather*cache, ai_summaries, weather_history, ~~locations~~ (dropped Phase 0F — use `places.placesGeo` via `src/lib/places.ts` / `api/py/_places_resolver.py`), activities, activity_categories, suitability_rules, tags, regions, seasons, api_keys, ai_prompts, ai_suggested_rules, weather_reports (legacy), history_analysis, ~~countries~~ (dropped Phase 0G — use `placesGeo.geoType=country`), ~~provinces~~ (dropped Phase 0G — use `placesGeo.geoType=province`), metar_cache, rate_limits, **air_quality_cache** (NEW — 1-h TTL, \_id keyed by `{lat:.4f}*{lon:.4f}`), **stations** (NEW), **observations** (NEW), **stationObservations** (NEW), **alerts** (NEW), **communityReports** (NEW) | `weatherDb()` / `weather_db()`           |
+| `places`       | **places**, **placesGeo**, **categories**, **routes**, **conditionReports**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `placesDb()` / `places_db()`             |
+| `identity`     | **persons**, **credentials**, **activityLog**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `identityDb()` / `identity_db()`         |
+| `shamwari`     | **conversations**, **messages**, **guardrails**, **knowledgeBase**, **preferences**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `shamwariDb()` / `shamwari_db()`         |
+| `device`       | **devices**, **commands**, **telemetry**, **deviceHistory**, device_profiles (legacy)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `deviceDb()` / `device_db()`             |
+| `integrations` | **providers**, **providerConfigurations**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `integrationsDb()` / `integrations_db()` |
 
 **Schema conventions (universal):**
+
 - `_id` is a string (UUID), not ObjectId
 - `_schemaVersion: "v3.1"` required (enum-validated)
 - `bundu` sub-doc required: `{ countryCode, provinceSlug?, ... }`
@@ -1636,7 +1709,7 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 **`placesGeo` writes (Phase 0E):** `places.placesGeo` has its OWN validator that does NOT include a `bundu` field — calling `stamp_platform_fields` on it would fail. Use `api/py/_places_geo.upsert_placesgeo_city()` instead. The helper:
 
 - Builds the doc manually (no `bundu`), uses `_schemaVersion: "v3.2"`, and stamps `sourceProvenance.dataOrigin: "mukoko_user"`.
-- **Always dedupes first** via `find_nearby_placesgeo` — 5 km radius, normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country _id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
+- **Always dedupes first** via `find_nearby_placesgeo` — 5 km radius, normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country \_id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
 - Slugs are `<slugified-name>-<6-char hex>` (e.g. `harare-a1b2c3`). Suffixing with `-2`, `-3`, … is forbidden — slug collisions in `weather.locations` now raise `SlugCollisionError` and surface the existing record as a `mode: "duplicate"` response.
 
 **Fundi search-miss queue (Phase 0E — disabled in Phase 0F):** Previously mukoko ALSO enqueued a POI seed request via `_places_geo.enqueue_fundi_seed()` so the Fundi worker would populate `places.places`. Phase 0F removes this call — POI enrichment is a separate optional concern and is not P0 for mukoko-weather. Re-enable behind a flag like `MUKOKO_ENRICH_POIS_VIA_FUNDI` once the POI surface is actually consumed.
@@ -1645,12 +1718,12 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 
 `weather.locations` is **gone**. Every location read/write flows through `places.placesGeo` (admin geography) + `places.places` (POIs from OSM/Fundi) via `src/lib/places.ts`. Mukoko-weather is now a consumer of the platform's canonical geographic data, not a maintainer of a parallel silo.
 
-| Helper (`src/lib/places.ts`) | Purpose |
-|---|---|
-| `resolveLocationSlug(slug)` | Clean URL slug → adapted `LocationDoc` via placesGeo |
-| `nearestPlacesGeo(lat, lon, maxKm?)` | $nearSphere on placesGeo for IP-geo / GPS reverse lookup |
-| `searchPlaces(query, bbox?)` | Searches `places.places` POIs for the explore/search flows |
-| `adaptPlacesGeoToLocationDoc(doc, hint)` | Adapter — placesGeo doc → legacy `LocationDoc` shape |
+| Helper (`src/lib/places.ts`)             | Purpose                                                    |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| `resolveLocationSlug(slug)`              | Clean URL slug → adapted `LocationDoc` via placesGeo       |
+| `nearestPlacesGeo(lat, lon, maxKm?)`     | $nearSphere on placesGeo for IP-geo / GPS reverse lookup   |
+| `searchPlaces(query, bbox?)`             | Searches `places.places` POIs for the explore/search flows |
+| `adaptPlacesGeoToLocationDoc(doc, hint)` | Adapter — placesGeo doc → legacy `LocationDoc` shape       |
 
 Resolution chain for `/harare`:
 
@@ -1688,45 +1761,54 @@ Slugs in `places.placesGeo` are hash-suffixed (`harare-a1b2c3`) — the resolver
 **Backward compat:** `getDb()` / `get_db()` is aliased to `weatherDb()` / `weather_db()` so existing call sites keep working. Legacy collection accessors (`weather_cache_collection`, `locations_collection`, etc.) now route to the appropriate platform DB internally — no call-site changes required.
 
 **Other notes:**
+
 - Collections use TTL indexes for automatic cache expiration
 - Historical weather data is recorded automatically on every fresh API fetch
 - Rate limits collection has TTL index on `expiresAt` for automatic cleanup
 
 **Atlas Search (fuzzy text search):**
+
 - `searchActivitiesFromDb(query)` — Atlas Search → `$text` fallback for activities
 - Phase 0F: `searchLocationsFromDb` now scans the static `LOCATIONS` seed catalog directly (no Atlas Search). Location text search will be reimplemented against `places.placesGeo` or `places.places` in a follow-up.
 - Requires an Atlas Search index named `activity_search` (definitions in `src/lib/db.ts` via `getAtlasSearchIndexDefinitions()`)
 - **Time-based recovery:** When a missing-index error is detected (MongoDB code 40324), search is disabled for `ATLAS_RETRY_AFTER_MS` (5 minutes), then automatically retries.
 
 **Vector Search (semantic search — Phase 0F neutralised):**
+
 - `vectorSearchLocations(embedding, options)` returns `[]` and `storeLocationEmbedding*` are no-ops — `weather.locations` is dropped, so there's nowhere to store embeddings.
 - Semantic search will be reimplemented against `shamwari.knowledgeBase` (vector-embedded) or `places.places` once an embedding pipeline lands.
 
 **$facet aggregation:**
+
 - `getTagCountsAndStats()` — runs tag counts and location stats in a single aggregation pipeline
 
 ### Modifying SEO
+
 - Root metadata: `src/app/layout.tsx`
 - Per-location metadata: `src/app/[location]/page.tsx` `generateMetadata()`
 - Structured data: JSON-LD in both layout and location page
 
 ### Modifying colors
+
 1. Add CSS custom properties in `src/app/globals.css` — both `:root` (light) and `[data-theme="dark"]` (dark) blocks
 2. Register in the `@theme inline` block so Tailwind can generate utility classes
 3. Use Tailwind classes (`text-frost-severe`, `bg-surface-card`) in components — never hardcoded values
-4. Verify APCA contrast ratios using https://www.myndex.com/APCA/ for both light and dark themes
+4. Verify APCA contrast ratios using <https://www.myndex.com/APCA/> for both light and dark themes
 
 ### Adding translations
+
 1. Add keys to the `messages.en` object in `src/lib/i18n.ts`
 2. Use `t("key.path")` in components
 3. For interpolation: `t("weather.current", { location: name })`
 
 ### Cloudflare Workers (optional edge layer)
+
 The `worker/` directory contains an independent Hono-based API that mirrors the Next.js API routes. It uses Cloudflare KV for caching instead of MongoDB. This is an optional deployment target — the primary deployment is Vercel.
 
 ## Removed / Migrated / Renamed Files
 
 The following TypeScript files were **removed** during the Python backend migration:
+
 - `src/lib/circuit-breaker.ts` — circuit breaker resilience (re-implemented in Python as `api/py/_circuit_breaker.py`)
 - `src/lib/rate-limit.ts` — rate limiting (replaced by `check_rate_limit` in `api/py/_db.py`)
 - `src/lib/geocoding.ts` — geocoding (replaced by Python in `api/py/_locations.py`)
@@ -1735,4 +1817,5 @@ The following TypeScript files were **removed** during the Python backend migrat
 - All TypeScript API routes under `src/app/api/` except `og/` and `db-init/` — replaced by Python endpoints under `api/py/`
 
 The following files were **renamed**:
+
 - `src/lib/locations-africa.ts` → `src/lib/locations-global.ts` — expanded from African cities to include ASEAN countries (imported as `GLOBAL_LOCATIONS`)
