@@ -1722,8 +1722,12 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 | ---------------------------------------- | ---------------------------------------------------------- |
 | `resolveLocationSlug(slug)`              | Clean URL slug → adapted `LocationDoc` via placesGeo       |
 | `nearestPlacesGeo(lat, lon, maxKm?)`     | $nearSphere on placesGeo for IP-geo / GPS reverse lookup   |
+| `nearestPlace(lat, lon, maxKm?)`         | $nearSphere on `places.places` POIs — tight ≤250 m match   |
+| `poiTypeFromPlace(doc)`                  | Extract a single POI type (school/hospital/market/park)    |
 | `searchPlaces(query, bbox?)`             | Searches `places.places` POIs for the explore/search flows |
 | `adaptPlacesGeoToLocationDoc(doc, hint)` | Adapter — placesGeo doc → legacy `LocationDoc` shape       |
+
+**POI-nearest refinement (create-on-demand):** After a GPS/coords reverse-geocode, `geo_lookup` / `add_location` (`api/py/_locations.py` `_match_nearby_poi` → `_places_geo.find_nearest_place`) query `places.places` for the nearest POI within **≤250 m** (`POI_MATCH_RADIUS_KM`). If a named POI is that close, its name replaces the raw reverse-geocode name (richer + consistent with the platform POI catalog) and its type is stamped onto `sourceProvenance.mukokoPoiType` and surfaced as `poiType` on the location payload (so the location page + AI summary can mention "school", "hospital", "market", "park"). This is deliberately tight — NOT a coarse distance-snap to far-away places. The whole lookup is wrapped in try/except and falls back to the reverse-geocode on any miss, empty result, or missing 2dsphere index. TS mirror: `nearestPlace` / `poiTypeFromPlace` in `src/lib/places.ts`; the adapter surfaces `poiType` from `sourceProvenance.mukokoPoiType`.
 
 Resolution chain for `/harare`:
 
