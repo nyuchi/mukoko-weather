@@ -642,18 +642,18 @@ Key functions: `getLocationBySlug(slug)`, `searchLocationsFromDb(query, options)
 
 ### Activities
 
-`src/lib/activities.ts` defines 50+ activities across 6 broadened categories covering industries and lifestyles worldwide. Activities extend the LocationTag system with user-activity categories.
+`src/lib/activities.ts` defines 50+ activities across 6 broadened categories covering industries and lifestyles worldwide. Activities extend the LocationTag system with user-activity categories. **Labels and descriptions use Southern-African (Zimbabwe-first) framing** — e.g. **Braai** (not Barbecue), **Soccer (Football)**, **Cattle Herding**, **Communal Gardening (Nhimbe)**, **Harvest (Kukohwa)**, **Fishing (Kariba)**, **Festivals (Mbira & Cultural)**. **Activity `id`s are stable** (referenced by suitability rules and persisted in Zustand `selectedActivities`); only human `label`/`description` text was localized. New African activities added: `tobacco-farming`, `cotton-farming`, `planting`, `harvest`, `netball`, `potjie`, `market-day`, `church-gathering` — each inherits its `category:<category>` suitability rule.
 
 **Categories (broadened labels, same IDs for backward compat):**
 
-| Category ID | Display Label           | Covers                                                                         |
-| ----------- | ----------------------- | ------------------------------------------------------------------------------ |
-| `farming`   | Agriculture & Forestry  | Crops, livestock, horticulture, forestry, beekeeping, aquaculture, irrigation  |
-| `mining`    | Industry & Construction | Mining, construction, manufacturing, energy, logistics                         |
-| `travel`    | Transport & Logistics   | Driving, commuting, flying, trucking, marine shipping                          |
-| `tourism`   | Outdoors & Conservation | Safari, camping, conservation, wildlife research, hiking, fishing, stargazing  |
-| `sports`    | Sports & Fitness        | Football, rugby, cricket, athletics, coaching, swimming, cycling, horse riding |
-| `casual`    | Lifestyle & Events      | Festivals, weddings, education, health/wellness, drone flying, picnics         |
+| Category ID | Display Label           | Covers                                                                                                                                                            |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `farming`   | Agriculture & Forestry  | Maize/mielie & crops, cattle herding, tobacco, cotton, horticulture, nhimbe gardening, planting, harvest, forestry, beekeeping (mukoko), fish farming, irrigation |
+| `mining`    | Industry & Construction | Mining (gold/platinum/chrome), construction, manufacturing, energy, warehousing                                                                                   |
+| `travel`    | Transport & Logistics   | Driving, kombi commuting, flying, cross-border trucking, Kariba ferry/marine                                                                                      |
+| `tourism`   | Outdoors & Conservation | Safari & game drives, camping, conservation, wildlife research, hiking, Kariba fishing, stargazing                                                                |
+| `sports`    | Sports & Fitness        | Soccer, netball, rugby, cricket, athletics, coaching, swimming, cycling, horse riding                                                                             |
+| `casual`    | Lifestyle & Events      | Braai, potjie, market day (musika), church gatherings, mbira festivals, weddings (roora), education, drone flying, picnics                                        |
 
 **Key functions:** `getActivitiesByCategory(category)`, `getActivityById(id)`, `getActivityLabels(ids)`, `getRelevantActivities(locationTags, selectedIds)`, `getDefaultActivitiesForLocation(locationTags, limit)`, `searchActivities(query)`
 
