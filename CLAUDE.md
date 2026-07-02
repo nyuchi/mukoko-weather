@@ -22,7 +22,7 @@ Social: Twitter @mukokoafrica, Instagram @mukoko.africa
 - **UI components:** shadcn/ui (new-york style, Lucide icons)
 - **Charts:** Chart.js 4 + react-chartjs-2 (Canvas 2D rendering via `src/components/ui/chart.tsx`)
 - **Maps:** MapLibre GL JS + MapTiler Cloud (vector tiles direct from CDN via `NEXT_PUBLIC_MAPTILER_API_KEY` — no server proxy; GPU-rendered; theme-aware streets-v2 / streets-v2-dark styles); Tomorrow.io raster weather overlays still proxied via `/api/py/map-tiles`
-- **Aviation:** NOAA Aviation Weather Center for METAR/TAF data; `@react-pdf/renderer` for pre-flight briefing PDFs; 37 ICAO airports mapped (`src/lib/icao-codes.ts`) with `getNearestIcao(lat, lon)` haversine fallback
+- **Aviation:** NOAA Aviation Weather Center for METAR/TAF data; `@react-pdf/renderer` for pre-flight briefing PDFs; 70+ ICAO airports mapped (`src/lib/icao-codes.ts`, name + verified WGS 84 coords) with `getNearestIcao(lat, lon)` haversine fallback and `getNearestIcaos(lat, lon, count)` for the N-nearest selectable stations shown in the location aviation section
 - **Drag-and-drop:** `@dnd-kit/core` + `@dnd-kit/sortable` for user-reorderable sections on the location page
 - **Branding:** Mukoko brand kit doctrine v4.1.0 — 7 minerals (cobalt, tanzanite, malachite, gold, terracotta, sodalite, copper); Noto Serif (display/wordmark), Noto Sans (UI), JetBrains Mono (code/labels)
 - **Styling:** Tailwind CSS 4 with CSS custom properties (Brand System v6)
@@ -528,7 +528,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
 - `/api/ai/[...path]` — ANY (Phase 1D), auth-gated proxy for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
-- `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording)
+- `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording). Also attaches Windy-style ADDITIONAL data from Open-Meteo (free, keyless): `minutely` (next-hour precip nowcast, 4×15-min steps, always attempted) and, via the optional `?models=` comma list (`gfs_seamless,ecmwf_ifs04,icon_seamless,meteofrance_seamless`), a multi-model comparison — `models` (per-model hourly temp/precip series), `models_available`, `models_time`. The extras fetch is circuit-breaker gated (`open_meteo_breaker`) and best-effort — never blocks the base forecast
 - `/api/py/ai` — POST, AI weather summaries (MongoDB cached with tiered TTL: 30/60/120 min)
 - `/api/py/chat` — POST, Shamwari Explorer chatbot (Claude + tool use: search_locations, get_weather, get_activity_advice, list_locations_by_tag). Rate-limited 20 req/hour/IP
 - `/api/py/ai/followup` — POST, inline follow-up chat for AI summaries. Pre-seeded with the AI summary as conversation context. Max 5 exchanges then redirects to Shamwari. Rate-limited 30 req/hour/IP
@@ -767,6 +767,8 @@ weather.stationObservations → QC pipeline → weather.observations
 - `setSelectedLocation(slug)` — updates location, queues device sync
 - `selectedActivities: string[]` — activity IDs (from `src/lib/activities.ts`), persisted to localStorage, synced to server
 - `toggleActivity(id)` — adds/removes an activity selection, queues device sync
+- `selectedForecastModel: string` — Windy-style forecast model preference (Open-Meteo model id or `"best_match"`, default `"best_match"`), persisted (RxDB) + device-synced. Set via the "Forecast model" radio group in the My Weather modal Settings tab; passed by `fetchWeather()` and highlighted in `ModelComparisonChart`
+- `setSelectedForecastModel(model)` — updates the model preference, persists to RxDB
 - `savedLocations: string[]` — saved location slugs (up to `MAX_SAVED_LOCATIONS = 10`), persisted to localStorage, synced to server
 - `saveLocation(slug)` — adds a location to saved list (no-op if already saved or at cap), queues device sync
 - `removeLocation(slug)` — removes a location from saved list, queues device sync
