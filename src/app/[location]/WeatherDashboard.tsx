@@ -45,7 +45,7 @@ import { InfoRow } from "@/components/ui/info-row";
 import { SupportBanner } from "@/components/weather/SupportBanner";
 import { DraggableSection } from "@/components/weather/DraggableSection";
 import { LiveClock } from "@/components/weather/LiveClock";
-import { getIcaoForSlug, getNearestIcao } from "@/lib/icao-codes";
+import { getIcaoForSlug, getNearestIcao, getNearestIcaos } from "@/lib/icao-codes";
 import { cacheWeatherHint } from "@/lib/weather-scenes";
 
 // ── Code-split heavy components ─────────────────────────────────────────────
@@ -109,6 +109,8 @@ export function WeatherDashboard({
   const [modelSeries, setModelSeries] = useState<ModelForecast[]>([]);
   const [modelsTime, setModelsTime] = useState<string[]>([]);
   const icao = getIcaoForSlug(location.slug) ?? getNearestIcao(location.lat, location.lon);
+  // Nearby stations the user can switch between in the aviation section.
+  const nearbyIcaos = getNearestIcaos(location.lat, location.lon, 5);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -427,7 +429,7 @@ export function WeatherDashboard({
               <LazySection label="aviation-weather" fallback={<SectionSkeleton />}>
                 <ChartErrorBoundary name="aviation weather">
                   <Suspense fallback={<SectionSkeleton />}>
-                    <AviationWeather slug={location.slug} icao={icao} />
+                    <AviationWeather slug={location.slug} icao={icao} nearby={nearbyIcaos} />
                   </Suspense>
                 </ChartErrorBoundary>
               </LazySection>
