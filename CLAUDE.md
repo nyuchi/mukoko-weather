@@ -646,14 +646,14 @@ Key functions: `getLocationBySlug(slug)`, `searchLocationsFromDb(query, options)
 
 **Categories (broadened labels, same IDs for backward compat):**
 
-| Category ID | Display Label           | Covers                                                                                            |
-| ----------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| Category ID | Display Label           | Covers                                                                                                                                                            |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `farming`   | Agriculture & Forestry  | Maize/mielie & crops, cattle herding, tobacco, cotton, horticulture, nhimbe gardening, planting, harvest, forestry, beekeeping (mukoko), fish farming, irrigation |
-| `mining`    | Industry & Construction | Mining (gold/platinum/chrome), construction, manufacturing, energy, warehousing                  |
-| `travel`    | Transport & Logistics   | Driving, kombi commuting, flying, cross-border trucking, Kariba ferry/marine                      |
-| `tourism`   | Outdoors & Conservation | Safari & game drives, camping, conservation, wildlife research, hiking, Kariba fishing, stargazing |
-| `sports`    | Sports & Fitness        | Soccer, netball, rugby, cricket, athletics, coaching, swimming, cycling, horse riding             |
-| `casual`    | Lifestyle & Events      | Braai, potjie, market day (musika), church gatherings, mbira festivals, weddings (roora), education, drone flying, picnics |
+| `mining`    | Industry & Construction | Mining (gold/platinum/chrome), construction, manufacturing, energy, warehousing                                                                                   |
+| `travel`    | Transport & Logistics   | Driving, kombi commuting, flying, cross-border trucking, Kariba ferry/marine                                                                                      |
+| `tourism`   | Outdoors & Conservation | Safari & game drives, camping, conservation, wildlife research, hiking, Kariba fishing, stargazing                                                                |
+| `sports`    | Sports & Fitness        | Soccer, netball, rugby, cricket, athletics, coaching, swimming, cycling, horse riding                                                                             |
+| `casual`    | Lifestyle & Events      | Braai, potjie, market day (musika), church gatherings, mbira festivals, weddings (roora), education, drone flying, picnics                                        |
 
 **Key functions:** `getActivitiesByCategory(category)`, `getActivityById(id)`, `getActivityLabels(ids)`, `getRelevantActivities(locationTags, selectedIds)`, `getDefaultActivitiesForLocation(locationTags, limit)`, `searchActivities(query)`
 
