@@ -31,6 +31,15 @@ export const runtime = "edge";
 const DEFAULT_LAT = -17.83;
 const DEFAULT_LON = 31.05;
 
+// Trusted base URL for internal API calls. Derived ONLY from server env — never
+// from the incoming request (`req.url`/Host is attacker-controllable, which
+// would make the internal fetches an SSRF sink). Mirrors src/app/page.tsx.
+const INTERNAL_BASE =
+  process.env.NEXT_PUBLIC_APP_URL ??
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000");
+
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -58,7 +67,6 @@ export async function OPTIONS(): Promise<Response> {
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
-  const origin = new URL(req.url).origin;
   const params = req.nextUrl.searchParams;
 
   const qsLat = parseCoord(params.get("lat"));
@@ -78,7 +86,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   } else if (slug && /^[a-z0-9-]{1,80}$/.test(slug)) {
     // 2. Known location slug — resolve to coordinates via internal locations API.
     const loc = await fetchJson<Record<string, unknown> | Record<string, unknown>[]>(
-      `${origin}/api/py/locations?slug=${encodeURIComponent(slug)}`,
+      `${INTERNAL_BASE}/api/py/locations?slug=${encodeURIComponent(slug)}`,
     );
     const doc = Array.isArray(loc) ? loc[0] : loc;
     const dLat = doc ? Number(doc.lat) : NaN;
@@ -116,13 +124,13 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   // Fetch weather (resilient — the internal route never fails, but guard anyway).
   const weather = await fetchJson<WeatherResponse>(
-    `${origin}/api/py/weather?lat=${lat}&lon=${lon}`,
+    `${INTERNAL_BASE}/api/py/weather?lat=${lat}&lon=${lon}`,
   );
 
   // Resolve a display name if we don't already have one (coords / ip paths).
   if (!meta) {
     const geo = await fetchJson<{ nearest?: Record<string, unknown> }>(
-      `${origin}/api/py/geo?lat=${lat}&lon=${lon}`,
+      `${INTERNAL_BASE}/api/py/geo?lat=${lat}&lon=${lon}`,
     );
     const near = geo?.nearest;
     meta = {
