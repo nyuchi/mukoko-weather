@@ -251,7 +251,7 @@ mukoko-weather/
 │   │   │       ├── leaflet-css.ts         # Leaflet CSS import
 │   │   │       └── leaflet-icon-fix.ts    # Marker icon URL fix for bundlers
 │   │   └── embed/
-│   │       ├── MukokoWeatherEmbed.tsx          # Embeddable widget (current/forecast/badge)
+│   │       ├── MukokoWeatherEmbed.tsx          # Embeddable widget (current / today / 5day / 7day; IP-based default via /api/embed/current)
 │   │       ├── MukokoWeatherEmbed.module.css   # Self-contained widget CSS (no Tailwind)
 │   │       ├── MukokoWeatherEmbed.test.ts
 │   │       └── index.ts
@@ -528,7 +528,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
 - `/api/ai/[...path]` — ANY (Phase 1D), auth-gated proxy for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
-- `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording)
+- `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording). Also attaches Windy-style ADDITIONAL data from Open-Meteo (free, keyless): `minutely` (next-hour precip nowcast, 4×15-min steps, always attempted) and, via the optional `?models=` comma list (`gfs_seamless,ecmwf_ifs04,icon_seamless,meteofrance_seamless`), a multi-model comparison — `models` (per-model hourly temp/precip series), `models_available`, `models_time`. The extras fetch is circuit-breaker gated (`open_meteo_breaker`) and best-effort — never blocks the base forecast
 - `/api/py/ai` — POST, AI weather summaries (MongoDB cached with tiered TTL: 30/60/120 min)
 - `/api/py/chat` — POST, Shamwari Explorer chatbot (Claude + tool use: search_locations, get_weather, get_activity_advice, list_locations_by_tag). Rate-limited 20 req/hour/IP
 - `/api/py/ai/followup` — POST, inline follow-up chat for AI summaries. Pre-seeded with the AI summary as conversation context. Max 5 exchanges then redirects to Shamwari. Rate-limited 30 req/hour/IP
@@ -643,18 +643,18 @@ Key functions: `getLocationBySlug(slug)`, `searchLocationsFromDb(query, options)
 
 ### Activities
 
-`src/lib/activities.ts` defines 50+ activities across 6 broadened categories covering industries and lifestyles worldwide. Activities extend the LocationTag system with user-activity categories.
+`src/lib/activities.ts` defines 50+ activities across 6 broadened categories covering industries and lifestyles worldwide. Activities extend the LocationTag system with user-activity categories. **Labels and descriptions use Southern-African (Zimbabwe-first) framing** — e.g. **Braai** (not Barbecue), **Soccer (Football)**, **Cattle Herding**, **Communal Gardening (Nhimbe)**, **Harvest (Kukohwa)**, **Fishing (Kariba)**, **Festivals (Mbira & Cultural)**. **Activity `id`s are stable** (referenced by suitability rules and persisted in Zustand `selectedActivities`); only human `label`/`description` text was localized. New African activities added: `tobacco-farming`, `cotton-farming`, `planting`, `harvest`, `netball`, `potjie`, `market-day`, `church-gathering` — each inherits its `category:<category>` suitability rule.
 
 **Categories (broadened labels, same IDs for backward compat):**
 
-| Category ID | Display Label           | Covers                                                                         |
-| ----------- | ----------------------- | ------------------------------------------------------------------------------ |
-| `farming`   | Agriculture & Forestry  | Crops, livestock, horticulture, forestry, beekeeping, aquaculture, irrigation  |
-| `mining`    | Industry & Construction | Mining, construction, manufacturing, energy, logistics                         |
-| `travel`    | Transport & Logistics   | Driving, commuting, flying, trucking, marine shipping                          |
-| `tourism`   | Outdoors & Conservation | Safari, camping, conservation, wildlife research, hiking, fishing, stargazing  |
-| `sports`    | Sports & Fitness        | Football, rugby, cricket, athletics, coaching, swimming, cycling, horse riding |
-| `casual`    | Lifestyle & Events      | Festivals, weddings, education, health/wellness, drone flying, picnics         |
+| Category ID | Display Label           | Covers                                                                                                                                                            |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `farming`   | Agriculture & Forestry  | Maize/mielie & crops, cattle herding, tobacco, cotton, horticulture, nhimbe gardening, planting, harvest, forestry, beekeeping (mukoko), fish farming, irrigation |
+| `mining`    | Industry & Construction | Mining (gold/platinum/chrome), construction, manufacturing, energy, warehousing                                                                                   |
+| `travel`    | Transport & Logistics   | Driving, kombi commuting, flying, cross-border trucking, Kariba ferry/marine                                                                                      |
+| `tourism`   | Outdoors & Conservation | Safari & game drives, camping, conservation, wildlife research, hiking, Kariba fishing, stargazing                                                                |
+| `sports`    | Sports & Fitness        | Soccer, netball, rugby, cricket, athletics, coaching, swimming, cycling, horse riding                                                                             |
+| `casual`    | Lifestyle & Events      | Braai, potjie, market day (musika), church gatherings, mbira festivals, weddings (roora), education, drone flying, picnics                                        |
 
 **Key functions:** `getActivitiesByCategory(category)`, `getActivityById(id)`, `getActivityLabels(ids)`, `getRelevantActivities(locationTags, selectedIds)`, `getDefaultActivitiesForLocation(locationTags, limit)`, `searchActivities(query)`
 
@@ -768,6 +768,8 @@ weather.stationObservations → QC pipeline → weather.observations
 - `setSelectedLocation(slug)` — updates location, queues device sync
 - `selectedActivities: string[]` — activity IDs (from `src/lib/activities.ts`), persisted to localStorage, synced to server
 - `toggleActivity(id)` — adds/removes an activity selection, queues device sync
+- `selectedForecastModel: string` — Windy-style forecast model preference (Open-Meteo model id or `"best_match"`, default `"best_match"`), persisted (RxDB) + device-synced. Set via the "Forecast model" radio group in the My Weather modal Settings tab; passed by `fetchWeather()` and highlighted in `ModelComparisonChart`
+- `setSelectedForecastModel(model)` — updates the model preference, persists to RxDB
 - `savedLocations: string[]` — saved location slugs (up to `MAX_SAVED_LOCATIONS = 10`), persisted to localStorage, synced to server
 - `saveLocation(slug)` — adds a location to saved list (no-op if already saved or at cap), queues device sync
 - `removeLocation(slug)` — removes a location from saved list, queues device sync
