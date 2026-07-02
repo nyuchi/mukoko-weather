@@ -251,7 +251,7 @@ mukoko-weather/
 │   │   │       ├── leaflet-css.ts         # Leaflet CSS import
 │   │   │       └── leaflet-icon-fix.ts    # Marker icon URL fix for bundlers
 │   │   └── embed/
-│   │       ├── MukokoWeatherEmbed.tsx          # Embeddable widget (current/forecast/badge)
+│   │       ├── MukokoWeatherEmbed.tsx          # Embeddable widget (current / today / 5day / 7day; IP-based default via /api/embed/current)
 │   │       ├── MukokoWeatherEmbed.module.css   # Self-contained widget CSS (no Tailwind)
 │   │       ├── MukokoWeatherEmbed.test.ts
 │   │       └── index.ts
