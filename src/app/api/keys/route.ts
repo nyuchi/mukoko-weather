@@ -7,9 +7,11 @@
  *   GET  /api/keys  → list the signed-in user's keys (masked, never the raw value)
  *   POST /api/keys  → mint a new key; returns the FULL key exactly once
  *
- * Ownership is enforced by scoping every query to the WorkOS `user.id`
- * (`personId`). The raw key is never logged and never stored — only a SHA-256
- * hash plus a short display prefix.
+ * Ownership is enforced by resolving the WorkOS user to their canonical
+ * `identity.persons._id` (`ownerPersonId`) and scoping every query to it, plus
+ * `surfaceContext: "mukoko-weather"` + `keyType: "external"`. Keys live in the
+ * platform-wide `platform.apiKeys` collection. The raw key is never logged and
+ * never stored — only a SHA-256 `keyHashedSecret` plus a short display prefix.
  *
  * NOTE: key-based enforcement on the public API is intentionally NOT wired up
  * yet. This surface is create/list/revoke + the gated UI only; enforcing
@@ -18,10 +20,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import type { WorkOSUser } from "@/lib/auth";
 import {
   countDeveloperApiKeys,
   createDeveloperApiKey,
   listDeveloperApiKeys,
+  resolveOwnerPersonId,
+  resolveOwnerEntityId,
   sanitizeLabel,
   MAX_KEYS_PER_USER,
 } from "@/lib/api-keys";
@@ -39,8 +44,14 @@ export async function GET(): Promise<NextResponse> {
   const { user } = await withAuth();
   if (!user) return unauthorized();
 
-  const keys = await listDeveloperApiKeys(user.id);
-  return NextResponse.json({ keys });
+  const personId = await resolveOwnerPersonId(user as WorkOSUser);
+  const [keys, entity] = await Promise.all([
+    listDeveloperApiKeys(personId),
+    resolveOwnerEntityId(personId),
+  ]);
+  // `entityRequired` lets the UI render the "register an entity" guidance
+  // up-front, before the user attempts to create a key.
+  return NextResponse.json({ keys, entityRequired: entity === null });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -69,7 +80,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const existing = await countDeveloperApiKeys(user.id);
+  const personId = await resolveOwnerPersonId(user as WorkOSUser);
+
+  // A key is owned by the developer's own entity — they must be a
+  // founder/admin/manager/representative of a registered entity to mint one.
+  const entity = await resolveOwnerEntityId(personId);
+  if (!entity) {
+    return NextResponse.json(
+      {
+        error: "entity_required",
+        message:
+          "You must be a founder, admin, manager, or representative of a registered entity to create an API key.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const existing = await countDeveloperApiKeys(personId);
   if (existing >= MAX_KEYS_PER_USER) {
     return NextResponse.json(
       {
@@ -80,7 +107,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { fullKey, key } = await createDeveloperApiKey(user.id, label);
+  const { fullKey, key } = await createDeveloperApiKey(
+    personId,
+    label,
+    entity.entityId,
+  );
   // `fullKey` is returned ONCE here and never again — the UI must surface it now.
   return NextResponse.json({ key, fullKey }, { status: 201 });
 }

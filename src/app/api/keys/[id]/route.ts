@@ -1,16 +1,19 @@
 /**
  * Developer API key revocation.
  *
- *   DELETE /api/keys/:id → revoke (hard-delete) one of the caller's own keys.
+ *   DELETE /api/keys/:id → revoke (soft-delete) one of the caller's own keys.
  *
- * Gated by `withAuth()`. The delete is scoped to `(_id, personId)` so a user
- * can only ever revoke a key they own — passing someone else's id deletes
- * nothing and returns 404.
+ * Gated by `withAuth()`. The revoke is scoped to `(_id, ownerPersonId,
+ * surfaceContext, keyType)` so a user can only ever revoke a key they own —
+ * passing someone else's id (or an already-revoked one) matches nothing and
+ * returns 404. Revocation is a soft-delete (`isActive: false` + `revokedAt`),
+ * never a hard delete.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import { revokeDeveloperApiKey } from "@/lib/api-keys";
+import type { WorkOSUser } from "@/lib/auth";
+import { resolveOwnerPersonId, revokeDeveloperApiKey } from "@/lib/api-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +44,8 @@ export async function DELETE(
     );
   }
 
-  const revoked = await revokeDeveloperApiKey(user.id, id);
+  const personId = await resolveOwnerPersonId(user as WorkOSUser);
+  const revoked = await revokeDeveloperApiKey(personId, id);
   if (!revoked) {
     return NextResponse.json(
       { error: "not_found", message: "Key not found." },

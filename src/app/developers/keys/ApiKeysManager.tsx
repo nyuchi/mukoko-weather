@@ -82,6 +82,7 @@ export function ApiKeysManager() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [entityRequired, setEntityRequired] = useState(false);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -89,8 +90,12 @@ export function ApiKeysManager() {
     try {
       const res = await fetch("/api/keys", { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to load keys (${res.status})`);
-      const data = (await res.json()) as { keys: ApiKey[] };
+      const data = (await res.json()) as {
+        keys: ApiKey[];
+        entityRequired?: boolean;
+      };
       setKeys(data.keys ?? []);
+      setEntityRequired(Boolean(data.entityRequired));
     } catch {
       setError("Could not load your API keys. Please try again.");
     } finally {
@@ -107,7 +112,7 @@ export function ApiKeysManager() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = label.trim();
-    if (!trimmed || creating || atCapacity) return;
+    if (!trimmed || creating || atCapacity || entityRequired) return;
     setCreating(true);
     setError(null);
     setNewKey(null);
@@ -122,7 +127,13 @@ export function ApiKeysManager() {
         key?: ApiKey;
         fullKey?: string;
         message?: string;
+        error?: string;
       };
+      // No eligible entity membership — surface the guidance state.
+      if (res.status === 403 || data.error === "entity_required") {
+        setEntityRequired(true);
+        throw new Error(data.message ?? "An entity is required to create a key.");
+      }
       if (!res.ok || !data.key || !data.fullKey) {
         throw new Error(data.message ?? "Could not create the key.");
       }
@@ -200,6 +211,24 @@ export function ApiKeysManager() {
         </div>
       )}
 
+      {/* Entity-required guidance — shown when the developer has no eligible
+          entity membership. Keys are owned by the developer's entity. */}
+      {entityRequired && (
+        <div className="baobab space-y-2" role="status">
+          <p className="giraffe">A registered entity is required</p>
+          <p className="gazelle">
+            API keys are owned by an entity. To create one, you must be a
+            founder, admin, manager, or representative of a registered entity.
+          </p>
+          <a
+            href="mailto:support@mukoko.com?subject=Register%20an%20entity%20for%20API%20keys"
+            className="impala-primary w-fit"
+          >
+            Register or claim an entity
+          </a>
+        </div>
+      )}
+
       {/* Create form */}
       <form onSubmit={handleCreate} className="acacia space-y-3">
         <label
@@ -220,13 +249,13 @@ export function ApiKeysManager() {
             onChange={(e) => setLabel(e.target.value)}
             maxLength={60}
             placeholder="Key label"
-            disabled={creating || atCapacity}
+            disabled={creating || atCapacity || entityRequired}
             className="flex-1 rounded-[var(--radius-input)] border border-border bg-surface-base px-3 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
             aria-describedby="key-capacity"
           />
           <button
             type="submit"
-            disabled={!label.trim() || creating || atCapacity}
+            disabled={!label.trim() || creating || atCapacity || entityRequired}
             className="kudu-sm shrink-0"
           >
             <PlusIcon size={16} />

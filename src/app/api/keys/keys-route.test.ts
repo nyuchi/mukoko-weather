@@ -1,9 +1,10 @@
 /**
  * /api/keys route tests (list + create).
  *
- * Verifies the gate (401 when anon), owner-scoping (personId = WorkOS user.id),
- * label validation (400), the per-user cap (429), and the one-time full-key
- * reveal on create (201).
+ * Verifies the gate (401 when anon), owner-scoping (the WorkOS user is resolved
+ * to their `identity.persons._id` and every DB call is scoped to it), label
+ * validation (400), the per-user cap (429), and the one-time full-key reveal on
+ * create (201).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -14,6 +15,8 @@ vi.mock("@workos-inc/authkit-nextjs", () => ({ withAuth: withAuthMock }));
 const listMock = vi.fn();
 const createMock = vi.fn();
 const countMock = vi.fn();
+const resolveMock = vi.fn();
+const entityMock = vi.fn();
 vi.mock("@/lib/api-keys", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/api-keys")>("@/lib/api-keys");
@@ -22,6 +25,8 @@ vi.mock("@/lib/api-keys", async () => {
     listDeveloperApiKeys: listMock,
     createDeveloperApiKey: createMock,
     countDeveloperApiKeys: countMock,
+    resolveOwnerPersonId: resolveMock,
+    resolveOwnerEntityId: entityMock,
   };
 });
 
@@ -30,6 +35,11 @@ beforeEach(() => {
   listMock.mockReset();
   createMock.mockReset();
   countMock.mockReset();
+  resolveMock.mockReset();
+  entityMock.mockReset();
+  // Default: WorkOS user_1 → identity person_1, with an eligible entity.
+  resolveMock.mockResolvedValue("person_1");
+  entityMock.mockResolvedValue({ entityId: "ent_1", entityIds: ["ent_1"] });
 });
 
 function jsonRequest(body: unknown): Request {
@@ -57,9 +67,22 @@ describe("GET /api/keys", () => {
     const mod = await import("./route");
     const res = await mod.GET();
     expect(res.status).toBe(200);
-    expect(listMock).toHaveBeenCalledWith("user_1");
+    // Scoped by the resolved identity person id, not the raw WorkOS id.
+    expect(listMock).toHaveBeenCalledWith("person_1");
     const body = await res.json();
     expect(body.keys).toHaveLength(1);
+    expect(body.entityRequired).toBe(false);
+  });
+
+  it("flags entityRequired when the user has no eligible entity membership", async () => {
+    withAuthMock.mockResolvedValueOnce({ user: { id: "user_1" } });
+    listMock.mockResolvedValueOnce([]);
+    entityMock.mockResolvedValueOnce(null);
+    const mod = await import("./route");
+    const res = await mod.GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entityRequired).toBe(true);
   });
 });
 
@@ -79,6 +102,17 @@ describe("POST /api/keys", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalid_label");
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when the user has no eligible entity membership", async () => {
+    withAuthMock.mockResolvedValueOnce({ user: { id: "user_1" } });
+    entityMock.mockResolvedValueOnce(null);
+    const mod = await import("./route");
+    const res = await mod.POST(jsonRequest({ label: "My Site" }) as never);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("entity_required");
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -103,8 +137,8 @@ describe("POST /api/keys", () => {
     const mod = await import("./route");
     const res = await mod.POST(jsonRequest({ label: "  My Site  " }) as never);
     expect(res.status).toBe(201);
-    // Label is sanitised before hitting the DB layer.
-    expect(createMock).toHaveBeenCalledWith("user_1", "My Site");
+    // Label sanitised; key scoped to the resolved person + owned by their entity.
+    expect(createMock).toHaveBeenCalledWith("person_1", "My Site", "ent_1");
     const body = await res.json();
     expect(body.fullKey).toBe("mk_live_deadbeef");
     expect(body.key.id).toBe("k9");

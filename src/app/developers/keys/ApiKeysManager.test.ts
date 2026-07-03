@@ -35,6 +35,17 @@ describe("ApiKeysManager component", () => {
     expect(manager).toContain("atCapacity");
   });
 
+  it("handles the entity-required state (guidance + disabled create)", () => {
+    expect(manager).toContain("entityRequired");
+    // Reads the flag from GET and reacts to a 403 on create.
+    expect(manager).toContain("entityRequired?: boolean");
+    expect(manager).toContain("res.status === 403");
+    // Renders a registration/claim link.
+    expect(manager).toContain("Register or claim an entity");
+    // Create is blocked while no eligible entity exists.
+    expect(manager).toContain("atCapacity || entityRequired");
+  });
+
   it("uses fauna classes / brand tokens and no hardcoded hex colours", () => {
     expect(manager).toMatch(/\bbaobab\b|\bacacia\b|\bkudu-sm\b|\bimpala\b/);
     // No hardcoded hex colours in the component.

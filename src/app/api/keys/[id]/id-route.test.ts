@@ -7,11 +7,18 @@ const withAuthMock = vi.fn();
 vi.mock("@workos-inc/authkit-nextjs", () => ({ withAuth: withAuthMock }));
 
 const revokeMock = vi.fn();
-vi.mock("@/lib/api-keys", () => ({ revokeDeveloperApiKey: revokeMock }));
+const resolveMock = vi.fn();
+vi.mock("@/lib/api-keys", () => ({
+  revokeDeveloperApiKey: revokeMock,
+  resolveOwnerPersonId: resolveMock,
+}));
 
 beforeEach(() => {
   withAuthMock.mockReset();
   revokeMock.mockReset();
+  resolveMock.mockReset();
+  // Default: WorkOS user_1 → identity person_1.
+  resolveMock.mockResolvedValue("person_1");
 });
 
 const VALID_ID = "3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b";
@@ -51,7 +58,8 @@ describe("DELETE /api/keys/:id", () => {
       params: Promise.resolve({ id: VALID_ID }),
     });
     expect(res.status).toBe(200);
-    expect(revokeMock).toHaveBeenCalledWith("user_1", VALID_ID);
+    // Scoped by the resolved identity person id, not the raw WorkOS id.
+    expect(revokeMock).toHaveBeenCalledWith("person_1", VALID_ID);
     const body = await res.json();
     expect(body.revoked).toBe(true);
   });
