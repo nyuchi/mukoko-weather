@@ -1222,8 +1222,8 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Components:**
 
 - `src/app/explore/page.tsx` — server component (ISR 1h), fetches tag counts and featured tags, renders AI search + Shamwari CTA card + category browse grid + country browse link
-- `src/components/explore/ExploreSearch.tsx` — client component: natural-language search input (e.g., "farming areas with low frost risk"), results render as location cards with inline weather data. "Ask Shamwari for more" link sets `ShamwariContext` with `source: "explore"` + `exploreQuery`
-- **API:** `POST /api/py/explore/search` — uses Claude with `search_locations` + `get_weather` tools. Falls back to text search if AI unavailable. Rate-limited 15 req/hour/IP
+- `src/components/explore/ExploreSearch.tsx` — client component with two layers: (1) **instant quick matches** — the same debounced (300ms) fast name/tag search used by `MyWeatherModal`'s location picker (`GET /api/py/search?q=...&limit=6`, `AbortController`-cancelled on rapid typing), shown live as the user types, as plain location links; (2) **AI search** — natural-language query (e.g., "farming areas with low frost risk"), submitted explicitly, results render as location cards with inline weather data. This keeps the quick-match experience consistent everywhere in the app search is offered, while AI search remains an additional, deliberate step. "Ask Shamwari for more" link sets `ShamwariContext` with `source: "explore"` + `exploreQuery` (gated behind the `shamwari_chat` feature flag)
+- **API:** `GET /api/py/search` — fast literal name/tag/geo text search (same endpoint as `MyWeatherModal`'s saved-locations search). `POST /api/py/explore/search` — uses Claude with `search_locations` + `get_weather` tools for natural-language queries. Falls back to text search if AI unavailable. Rate-limited 15 req/hour/IP
 
 **Sub-routes:**
 
