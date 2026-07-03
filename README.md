@@ -132,6 +132,7 @@ The home page (`/`) uses smart redirect: returning users go to their saved locat
 | `/privacy`                           | Privacy policy                                                                                      |
 | `/terms`                             | Terms of service                                                                                    |
 | `/embed`                             | Embeddable widget documentation                                                                     |
+| `/developers/keys`                   | Gated API-key management (sign-in required). Create / list / revoke developer API keys              |
 
 The main location page is a compact overview. Detail-heavy sections (charts, atmospheric trends, hourly/daily forecasts) live on dedicated sub-route pages. This reduces initial page load weight and prevents mobile OOM crashes.
 
@@ -178,6 +179,8 @@ All data, AI, and CRUD operations run in **Python FastAPI** (`api/py/`), deploye
 | `/api/og?title=&subtitle=&template=`  | GET    | Dynamic OG image generation (Edge runtime, Satori). 6 templates, in-memory rate-limited, 1-day CDN cache                                                                         |
 | `/api/db-init`                        | POST   | One-time DB setup + seed data (incl. AI prompts). Protected by `DB_INIT_SECRET` in production                                                                                    |
 | `/api/embed/current?slug=\|lat=&lon=` | GET    | Public embed API (Edge, open CORS). Compact current weather + up to 7 daily entries. No params → visitor's IP location (Vercel `x-vercel-ip-*` headers). Powers the embed widget |
+| `/api/keys`                           | GET/POST | Developer API keys — gated by `withAuth()` (401 anon). GET lists the user's keys (masked). POST mints a key (returns the full key ONCE), capped at 10/user. Keys are hashed (SHA-256) at rest — never stored raw |
+| `/api/keys/[id]`                      | DELETE | Revoke one of the caller's own keys (owner-scoped delete; 404 for foreign/unknown ids). Gated by `withAuth()`                                                                    |
 
 ### Resilience
 
