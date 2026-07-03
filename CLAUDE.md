@@ -698,6 +698,8 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 - `src/lib/seed-regions.ts` — supported geographic regions (bounding boxes + center points)
 - `src/lib/seed-seasons.ts` — country-specific season definitions for 50+ countries across Southern Africa, East Africa, West Africa, Central Africa, North Africa, Indian Ocean, and ASEAN. Each country covers all 12 months. Grouped by climate zone using `expand()` helper.
 
+**Countries & provinces are NOT seeded to the weather DB (Phase 0G).** `/api/db-init` no longer writes to `weather.countries` / `weather.provinces` — those silo collections are dropped. The canonical geographic hierarchy (54 countries / 567 provinces / 401 cities) lives in `places.placesGeo`, seeded by Fundi; reads go through `src/lib/places.ts` / `api/py/_places_resolver.py`. The static `COUNTRIES` / `PROVINCES` arrays in `src/lib/countries.ts` remain the display/flag source for `/explore/country`, breadcrumbs, and country/flag rendering — the `getAllCountries` / `getCountryByCode` / `getProvinceBySlug` / `getAllProvinces` / `getProvincesWithLocationCounts` readers in `db.ts` now source from those static arrays, not from any weather-DB collection.
+
 ### Weather Data
 
 **Tomorrow.io (primary):** `src/lib/tomorrow.ts` — Tomorrow.io API client, weather code mapping, and response normalization to the existing `WeatherData` interface.
