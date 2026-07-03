@@ -63,7 +63,7 @@ export function WelcomeBanner({
             <button
               type="button"
               onClick={() => { completeOnboarding(); trackEvent("onboarding_completed", { method: "continue" }); }}
-              className="press-scale inline-flex items-center rounded-full border border-text-tertiary/20 px-3.5 py-1.5 text-base font-medium text-text-secondary transition-all hover:bg-surface-card hover:border-text-tertiary/40 min-h-[var(--touch-target-min)]"
+              className="impala-sm"
             >
               Continue with {locationName}
             </button>
