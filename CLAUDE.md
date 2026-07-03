@@ -928,7 +928,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 **Server-side (MongoDB):**
 
 - Weather cache: 15-min TTL (auto-expires via TTL index)
-- AI summaries: tiered TTL — 30 min (major cities), 60 min (mid-tier), 120 min (small locations)
+- AI summaries: tiered TTL — 30 min (major cities), 60 min (mid-tier), 120 min (small locations) for real Claude-generated insights. Fallback text (no `ANTHROPIC_API_KEY`, open circuit breaker, or an Anthropic API error) is tagged `source: "fallback"` and cached for only 60s (`TTL_FALLBACK` in `api/py/_ai.py`) regardless of location tier — otherwise a single transient failure would serve the generic fallback summary for up to 2 hours per location
 - Weather history: unlimited retention (recorded on every fresh API fetch)
 - History analysis: 1h TTL in `history_analysis` collection (keyed by location + days + data hash)
 - Weather reports: TTL by severity — 24h (mild), 48h (moderate), 72h (severe) in `weather_reports` collection
