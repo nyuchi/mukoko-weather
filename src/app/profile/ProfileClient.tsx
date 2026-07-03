@@ -13,7 +13,11 @@
 
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
-import { initialsFor, displayNameFor, type PublicUser } from "@/lib/user-display";
+import {
+  initialsFor,
+  displayNameFor,
+  type PublicUser,
+} from "@/lib/user-display";
 
 export type ProfileUser = PublicUser;
 
@@ -47,7 +51,9 @@ export function ProfileClient({ user }: { user: ProfileUser }) {
             )}
           </span>
           <div className="min-w-0">
-            <p className="text-base font-medium text-text-primary truncate">{displayName}</p>
+            <p className="text-base font-medium text-text-primary truncate">
+              {displayName}
+            </p>
             {user.email && <p className="dove truncate">{user.email}</p>}
           </div>
         </div>

@@ -23,17 +23,23 @@ describe("initialsFor", () => {
   });
 
   it("trims whitespace-only names before falling back", () => {
-    expect(initialsFor({ firstName: "  ", lastName: "  ", email: "a@b.com" })).toBe("A");
+    expect(
+      initialsFor({ firstName: "  ", lastName: "  ", email: "a@b.com" }),
+    ).toBe("A");
   });
 });
 
 describe("displayNameFor", () => {
   it("joins first + last name", () => {
-    expect(displayNameFor({ firstName: "Bryan", lastName: "Fawcett" })).toBe("Bryan Fawcett");
+    expect(displayNameFor({ firstName: "Bryan", lastName: "Fawcett" })).toBe(
+      "Bryan Fawcett",
+    );
   });
 
   it("falls back to email when no name present", () => {
-    expect(displayNameFor({ email: "bryan@nyuchi.com" })).toBe("bryan@nyuchi.com");
+    expect(displayNameFor({ email: "bryan@nyuchi.com" })).toBe(
+      "bryan@nyuchi.com",
+    );
   });
 
   it("falls back to 'Signed in' when nothing is present", () => {
