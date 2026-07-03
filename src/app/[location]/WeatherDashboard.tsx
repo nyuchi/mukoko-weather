@@ -256,7 +256,7 @@ export function WeatherDashboard({
           <button
             type="button"
             onClick={() => setReordering(true)}
-            className="press-scale inline-flex min-h-[var(--touch-target-min)] items-center gap-1.5 rounded-full border border-text-tertiary/20 px-3 py-1 text-sm text-text-tertiary transition-all hover:border-text-tertiary/40 hover:text-text-secondary"
+            className="impala-sm"
             aria-label="Customise section layout"
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
