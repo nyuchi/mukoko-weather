@@ -178,6 +178,8 @@ mukoko-weather/
 │   │   ├── layout/
 │   │   │   ├── Header.tsx            # Sticky header + mobile bottom nav (Weather/Explore/History/My Weather; Shamwari paused, see FLAGS.shamwari_chat)
 │   │   │   ├── HeaderSkeleton.tsx    # Header loading skeleton
+│   │   │   ├── Breadcrumb.tsx        # Shared Home / Location / Current-page trail (atmosphere, forecast, map sub-routes)
+│   │   │   ├── Breadcrumb.test.ts
 │   │   │   └── Footer.tsx            # Footer with site stats, copyright, links, Ubuntu philosophy
 │   │   ├── weather/
 │   │   │   ├── CurrentConditions.tsx  # Large temp display, feels-like, daily high/low
@@ -506,6 +508,8 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 ### Routing
 
 **Philosophy:** The main location page (`/[location]`) is a compact overview — current conditions, AI summary, activity insights, and metric cards. Detail-heavy sections (charts, atmospheric trends, hourly/daily forecasts) live on dedicated sub-route pages. This reduces initial page load weight and prevents mobile OOM crashes from mounting all components simultaneously.
+
+**Sub-route back-navigation:** `/[location]/atmosphere`, `/[location]/forecast`, and `/[location]/map` all render the shared `Breadcrumb` component (`src/components/layout/Breadcrumb.tsx` — `Home / {location.name} / {current page}`) instead of each hand-rolling its own trail. `/[location]/map` previously used a floating "← Back to weather" pill overlay on the map; it now uses the same breadcrumb bar as the other two sub-routes for a consistent back-navigation pattern across all three.
 
 - `/` — GPS-first landing via `HomeLanding` (see "HomeLanding (Smart Home Page)" below): first-time visitors get a full auto-GPS prompt; returning visitors see their cached location immediately with a silent background GPS recheck for travel detection
 - `/[location]` — dynamic weather pages — overview: current conditions, AI summary, activity insights, atmospheric metric cards
@@ -1358,6 +1362,7 @@ _Page/component tests:_
 - `src/components/explore/ExploreChatbot.test.ts` — chatbot component tests, MarkdownErrorBoundary, contextual navigation
 - `src/components/explore/ExploreSearch.test.ts` — AI search structure, search flow, results rendering, Shamwari context
 - `src/components/embed/MukokoWeatherEmbed.test.ts` — widget rendering, data fetching
+- `src/components/layout/Breadcrumb.test.ts` — shared sub-route breadcrumb trail, aria-current, usage across atmosphere/forecast/map dashboards
 - `src/components/ui/chart-fallbacks.test.ts` — CSS fallback table key parity (light/dark sync)
 - `src/components/ui/primitives.test.ts` — UI primitive variants (StatusIndicator, CTACard, ToggleGroup, InfoRow, SectionHeader)
 - `src/components/weather/charts.test.ts` — chart data preparation (hourly + daily + atmospheric), hexWithAlpha
