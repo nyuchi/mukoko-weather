@@ -277,8 +277,6 @@ mukoko-weather/
 │   │   ├── suitability.test.ts
 │   │   ├── suitability-cache.ts   # Client-side cache for suitability rules + category styles (10-min TTL)
 │   │   ├── suitability-cache.test.ts # Suitability cache tests
-│   │   ├── tomorrow.ts            # Tomorrow.io API client + WMO normalization
-│   │   ├── tomorrow.test.ts
 │   │   ├── weather.ts             # Open-Meteo client, frost detection, weather utils, synthesizeOpenMeteoInsights
 │   │   ├── weather.test.ts
 │   │   ├── weather-labels.ts      # Contextual label helpers (humidityLabel, pressureLabel, cloudLabel, feelsLikeContext)
@@ -719,13 +717,10 @@ Database seed data files are read by `/api/db-init` for one-time bootstrap:
 
 ### Weather Data
 
-**Tomorrow.io (primary):** `src/lib/tomorrow.ts` — Tomorrow.io API client, weather code mapping, and response normalization to the existing `WeatherData` interface.
+**Tomorrow.io (primary):** fetched and normalized exclusively in Python (`api/py/_weather.py` — `_fetch_tomorrow`, `_normalize_tomorrow`, `_tomorrow_code_to_wmo`). The TypeScript client (`src/lib/tomorrow.ts`) was removed (issue #101): it was a second, independent cache writer whose document shape (missing `is_day`/`current_units`) and Tomorrow→WMO mapping had drifted from the Python writer's, so the two poisoned each other's `weather_cache` rows. Python's normalization now emits the FULL `WeatherData` shape — `is_day` (current + hourly, computed from daily sunrise/sunset), `precipitation_probability`, `visibility` (km→m), and `current_units`.
 
-- `fetchWeatherFromTomorrow(lat, lon, apiKey)` — fetches forecast (hourly + daily) and normalizes
-- `tomorrowCodeToWmo(code)` — maps Tomorrow.io weather codes to WMO codes
-- `normalizeTomorrowResponse(data)` — converts Tomorrow.io response to `WeatherData`
-- `TomorrowRateLimitError` — thrown on 429, triggers fallback to Open-Meteo
 - Free tier limits: 500 calls/day, 25/hour, 3/second; 5-day forecast
+- SSR (`getWeatherForLocation` in `src/lib/db.ts`) is READ-ONLY against `weather_cache`: cache hit → serve; miss → server-to-server `GET /api/py/weather` (the single canonical fetch/cache/history writer); endpoint unreachable (e.g. plain `next dev` without Python functions) → direct Open-Meteo fetch WITHOUT caching → seasonal fallback
 
 **Open-Meteo (fallback):** `src/lib/weather.ts` — Open-Meteo client and pure utility functions:
 
@@ -1295,7 +1290,6 @@ _Library tests:_
 - `src/lib/activities.test.ts` — activity definitions, categories, search, filtering, category styles
 - `src/lib/suitability.test.ts` — suitability rule evaluation, condition matching, metric template resolution
 - `src/lib/countries.test.ts` — country/province data, flag emoji, province slug generation
-- `src/lib/tomorrow.test.ts` — Tomorrow.io weather code mapping, response normalization, insights extraction
 - `src/lib/store.test.ts` — theme resolution (light/dark/system), SSR fallback, ShamwariContext set/clear/expiry, savedLocations CRUD/cap/persistence
 - `src/lib/suggested-prompts.test.ts` — suggested prompt generation, weather condition matching, max 3 cap
 - `src/lib/device-sync.test.ts` — device sync CRUD, debounced sync, migration, beforeunload
@@ -1600,6 +1594,7 @@ The Python FastAPI backend auto-generates an **OpenAPI 3.1** specification from 
 - `NEXT_PUBLIC_WORKOS_REDIRECT_URI` — required, the OAuth callback URL. Local: `http://localhost:3000/callback`. Production: `https://weather.mukoko.com/callback`. Must match the Redirect URI registered in the WorkOS dashboard
 - `ANTHROPIC_API_KEY` — optional, server-side only. Without it, a basic weather summary fallback is generated.
 - `DB_INIT_SECRET` — optional, protects the `/api/db-init` endpoint in production (via `x-init-secret` header)
+- `INTERNAL_API_BASE_URL` — optional, base URL for server-to-server calls into our own `/api/py/*` functions during SSR (defaults to `https://$VERCEL_URL` on Vercel, `http://localhost:3000` otherwise)
 - `ALERT_WEBHOOK_URL` — optional, enables webhook alerting for high/critical severity errors (Slack incoming webhook, Discord webhook, PagerDuty, or compatible services). Used by `src/lib/observability.ts`
 - `NEXT_PUBLIC_MAPTILER_API_KEY` — MapTiler Cloud API key for OpenMapTiles base map tiles and aviation map layers (`feature/openmaptiles` branch). Set in `.env.local` (gitignored). Key stored in MapTiler Cloud account.
 
@@ -1831,6 +1826,7 @@ The following TypeScript files were **removed** during the Python backend migrat
 - `src/lib/rate-limit.ts` — rate limiting (replaced by `check_rate_limit` in `api/py/_db.py`)
 - `src/lib/geocoding.ts` — geocoding (replaced by Python in `api/py/_locations.py`)
 - `src/lib/kv-cache.ts` — KV cache (replaced by MongoDB `src/lib/db.ts`, then migrated to Python)
+- `src/lib/tomorrow.ts` — Tomorrow.io client + WMO mapping (issue #101 — the canonical implementation is `api/py/_weather.py`; the TS copy was a second cache writer with a drifted shape/mapping)
 - `src/types/cloudflare.d.ts` — KV types (no longer needed)
 - All TypeScript API routes under `src/app/api/` except `og/` and `db-init/` — replaced by Python endpoints under `api/py/`
 
