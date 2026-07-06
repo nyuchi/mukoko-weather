@@ -165,7 +165,7 @@ mukoko-weather/
 │   │   │   └── tabs.tsx              # Tabs (Radix, border-bottom active indicator)
 │   │   ├── brand/                    # Branding components
 │   │   │   ├── MukokoLogo.tsx        # Logo with text fallback
-│   │   │   ├── MineralsStripe.tsx    # 5-mineral decorative stripe
+│   │   │   ├── MineralsStripe.tsx    # 7-mineral decorative stripe (main layout only — covered by modal overlays, z-20)
 │   │   │   ├── ThemeProvider.tsx     # Syncs Zustand theme to document, listens for OS changes
 │   │   │   └── ThemeToggle.tsx       # Light/dark/system mode toggle (3-state cycle)
 │   │   ├── analytics/
@@ -1239,7 +1239,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 
 Users can submit real-time ground-truth weather observations, similar to Waze for road incidents.
 
-**Report types (10):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, fog, dust, frost
+**Report types (13):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, cloudy, fog, mist, haze, dust, frost. All 13 render with the app's SVG weather-icon set (`WeatherReportModal.tsx` and `RecentReports.tsx` share the same icon-per-type mapping) rather than emoji.
 **Severity levels (3):** mild (24h TTL), moderate (48h TTL), severe (72h TTL)
 
 **Components:**
