@@ -297,6 +297,8 @@ mukoko-weather/
 │   │   ├── weather-icons.test.ts
 │   │   ├── flight-category-styles.ts    # Shared VFR/MVFR/IFR/LIFR badge color mapping (AviationWeather + AviationPlanner)
 │   │   ├── flight-category-styles.test.ts
+│   │   ├── report-types.ts        # Shared id/label/icon map for community reports (WeatherReportModal + RecentReports)
+│   │   ├── report-types.test.ts
 │   │   ├── i18n.ts                # Lightweight i18n (en complete, sn/nd ready)
 │   │   ├── i18n.test.ts
 │   │   ├── map-layers.ts          # Map layer config (Tomorrow.io tile layers, mineral color styles)
@@ -1234,13 +1236,13 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 
 Users can submit real-time ground-truth weather observations, similar to Waze for road incidents.
 
-**Report types (13):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, cloudy, fog, mist, haze, dust, frost. All 13 render with the app's SVG weather-icon set (`WeatherReportModal.tsx` and `RecentReports.tsx` share the same icon-per-type mapping) rather than emoji.
+**Report types (13):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, cloudy, fog, mist, haze, dust, frost. Sourced from `src/lib/report-types.ts` — the single id/label/SVG-icon map shared by `WeatherReportModal.tsx` and `RecentReports.tsx`, so the two surfaces can't drift from each other. Must stay in sync with the backend allowlist (`REPORT_TYPES` in `api/py/_reports.py`), which is the validation source of truth.
 **Severity levels (3):** mild (24h TTL), moderate (48h TTL), severe (72h TTL)
 
 **Components:**
 
-- `src/components/weather/reports/WeatherReportModal.tsx` — 3-step dialog wizard: select type (grid of icons) → AI clarification (1-2 follow-up questions) → confirm (summary + severity + submit). Uses shadcn Dialog, triggered via `reportModalOpen` store state
-- `src/components/weather/reports/RecentReports.tsx` — shows recent community reports on location pages. Compact cards with type icon, severity badge, verified badge, time ago, upvote button. Includes "Report Weather" trigger
+- `src/components/weather/reports/WeatherReportModal.tsx` — 3-step dialog wizard: select type (grid of icons, from `report-types.ts`) → AI clarification (1-2 follow-up questions) → confirm (summary + severity + submit). Uses shadcn Dialog, triggered via `reportModalOpen` store state
+- `src/components/weather/reports/RecentReports.tsx` — shows recent community reports on location pages. Compact cards with type icon/label (via `getReportTypeInfo()` from `report-types.ts`), severity badge, verified badge, time ago, upvote button. Includes "Report Weather" trigger
 
 **API endpoints:**
 
@@ -1305,6 +1307,7 @@ _Library tests:_
 - `src/lib/feature-flags.test.ts` — flag definitions, default values, localStorage overrides, SSR fallback, getFeatureFlag equivalence
 - `src/lib/weather-icons.test.ts` — weather icon mapping
 - `src/lib/flight-category-styles.test.ts` — VFR/MVFR/IFR/LIFR color mapping, theme-aware severity-fg usage (not hardcoded white text)
+- `src/lib/report-types.test.ts` — shared report id/label/icon map, backend-allowlist parity, no duplicate ids
 - `src/lib/error-retry.test.ts` — error retry logic
 - `src/lib/accessibility.test.ts` — accessibility helpers
 - `src/lib/seed-ai-prompts.test.ts` — AI prompt/rule uniqueness, LOCATION DISCOVERY guardrails presence, structural integrity
