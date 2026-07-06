@@ -244,14 +244,15 @@ mukoko-weather/
 │   │   │   │   ├── WeatherReportModal.test.ts
 │   │   │   │   ├── RecentReports.tsx        # Recent community reports with upvoting
 │   │   │   │   └── RecentReports.test.ts
-│   │   │   └── map/                   # Interactive weather map (Leaflet + Tomorrow.io tiles)
+│   │   │   └── map/                   # Interactive weather map (MapLibre GL + Tomorrow.io overlay tiles)
 │   │   │       ├── MapPreview.tsx         # Compact map card on location page (links to /[location]/map)
-│   │   │       ├── MapLayerSwitcher.tsx   # Layer toggle buttons (radiogroup)
-│   │   │       ├── MapSkeleton.tsx        # Map loading skeleton
-│   │   │       ├── LeafletMapPreview.tsx  # Leaflet preview (dynamic, ssr:false)
-│   │   │       ├── LeafletMapFull.tsx     # Leaflet full interactive map (dynamic, ssr:false)
-│   │   │       ├── leaflet-css.ts         # Leaflet CSS import
-│   │   │       └── leaflet-icon-fix.ts    # Marker icon URL fix for bundlers
+│   │   │       ├── MapLibreMap.tsx        # MapLibre GL map (theme-aware MapTiler style, marker, weather overlay)
+│   │   │       ├── MapLibreMap.test.ts
+│   │   │       ├── WeatherLayerPanel.tsx  # Compact overlay layer switcher (icon rail, touch-target-min buttons)
+│   │   │       ├── WeatherLayerPanel.test.ts
+│   │   │       ├── use-map-style.ts       # Theme-aware MapTiler style hook
+│   │   │       ├── use-map-style.test.ts
+│   │   │       └── MapSkeleton.tsx        # Map loading skeleton
 │   │   └── embed/
 │   │       ├── MukokoWeatherEmbed.tsx          # Embeddable widget (current / today / 5day / 7day; IP-based default via /api/embed/current)
 │   │       ├── MukokoWeatherEmbed.module.css   # Self-contained widget CSS (no Tailwind)
