@@ -467,7 +467,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 
 **CORS:** Restricted to `https://weather.mukoko.com` and `http://localhost:3000` (not wildcard).
 
-**Rate limiting:** MongoDB-backed IP rate limiter (`check_rate_limit` in `_db.py`). Per-endpoint limits:
+**Rate limiting:** MongoDB-backed IP rate limiter (`check_rate_limit` in `_db.py`). **Fails open on DB errors** — the limiter's upsert is a write that runs before the real work on every rate-limited endpoint, so when the cluster can't accept writes (storage quota, credential rotation, outage) it returns `allowed: true` instead of raising; serving unmetered during a DB outage beats 500ing all nine rate-limited endpoints at once. Per-endpoint limits:
 
 - `/api/py/chat` — 20 req/hour
 - `/api/py/ai` — 30 req/hour (bucket key `ai-summary`; this route is reachable directly per `vercel.json`'s blanket `/api/py/(.*)` rewrite, not just via the authenticated `/api/ai/*` proxy, and every call writes into the same `ai_summaries` doc real visitors read)
