@@ -176,7 +176,7 @@ mukoko-weather/
 │   │   │   ├── ExploreSearch.tsx     # AI-powered natural-language location search
 │   │   │   └── ExploreSearch.test.ts
 │   │   ├── layout/
-│   │   │   ├── Header.tsx            # Sticky header + 5-item mobile bottom nav (Weather/Explore/Shamwari/History/My Weather)
+│   │   │   ├── Header.tsx            # Sticky header + mobile bottom nav (Weather/Explore/History/My Weather; Shamwari paused, see FLAGS.shamwari_chat)
 │   │   │   ├── HeaderSkeleton.tsx    # Header loading skeleton
 │   │   │   └── Footer.tsx            # Footer with site stats, copyright, links, Ubuntu philosophy
 │   │   ├── weather/
@@ -512,7 +512,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/[location]/atmosphere` — 24-hour atmospheric detail charts (humidity, wind, pressure, UV) for a location
 - `/[location]/forecast` — hourly (24h) + daily (7-day) forecast charts + sunrise/sunset for a location
 - `/[location]/map` — full-viewport interactive weather map with layer switcher (precipitation, cloud, temperature, wind)
-- `/shamwari` — Shamwari AI chat (full-viewport, Claude app style, input above mobile nav)
+- `/shamwari` — Shamwari AI chat (full-viewport, Claude app style, input above mobile nav). **Paused** — `notFound()`s while `FLAGS.shamwari_chat` is `false` (see Feature Flags section)
 - `/explore` — browse locations by category and country (ISR 1h)
 - `/explore/[tag]` — browse locations filtered by tag (city, farming, mining, tourism, etc.)
 - `/explore/country` — browse locations by country index
@@ -1003,7 +1003,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 `src/lib/feature-flags.ts` — lightweight, type-safe, client-side feature flag system. No SaaS dependency.
 
-**Flag definitions:** Code-defined `FLAGS` object with boolean defaults. All currently-shipped features are `true`. Experimental/future features (`premium_maps`, `vector_search`, `multi_language`) are `false`.
+**Flag definitions:** Code-defined `FLAGS` object with boolean defaults. All currently-shipped features are `true`. Experimental/future features (`premium_maps`, `vector_search`, `multi_language`) are `false`. `shamwari_chat` is also `false` — not experimental, _paused_: a standalone chatbot destination in primary nav doesn't match how weather apps work, so `/shamwari` currently 404s (`notFound()` in `src/app/shamwari/page.tsx`) and every "Ask/Continue/Discuss in Shamwari" CTA across the app (`Header`, `Footer`, `AISummaryChat`, `HistoryAnalysis`, `ExploreSearch`, `explore/page.tsx`, `developers/page.tsx`) is gated behind the same flag so nothing dead-ends at a 404. AI stays available as an ambient enhancement — inline AI summaries, the inline follow-up chat, AI-powered explore search — rather than a first-class nav destination. Flip the flag to `true` to bring the page and all its entry points back.
 
 **API:**
 
@@ -1045,7 +1045,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 **Header** (`src/components/layout/Header.tsx`): Sticky header with the Mukoko logo on the left, desktop nav links in the center, and a pill-shaped icon group on the right.
 
-**Desktop nav links** (hidden on mobile, `sm:flex`): Explore | Shamwari | History | Aviation — text links with active state highlighting, plus a **My Weather** button (opens the My Weather modal — a button rather than a `Link` since it's not a route). My Weather intentionally lives in the text-nav row rather than the icon pill so anonymous desktop users keep a way to reach it (mobile has its own separate bottom-nav entry, unaffected by this).
+**Desktop nav links** (hidden on mobile, `sm:flex`): Explore | Shamwari | History | Aviation — text links with active state highlighting, plus a **My Weather** button (opens the My Weather modal — a button rather than a `Link` since it's not a route). My Weather intentionally lives in the text-nav row rather than the icon pill so anonymous desktop users keep a way to reach it (mobile has its own separate bottom-nav entry, unaffected by this). Shamwari is gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags) and omitted from the array while off.
 
 **Action pill** (`bg-primary`, 44px circular icon buttons — map, notifications, account only):
 
@@ -1059,11 +1059,11 @@ The header also renders `WeatherReportModal` and `SavedLocationsModal` (both laz
 
 The header takes no props — location context comes from the URL path.
 
-**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 5 items:
+**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 4 always-on items, plus a 5th (Shamwari) gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags):
 
 1. **Weather** (home icon) → `/`
 2. **Explore** (compass icon) → `/explore`
-3. **Shamwari** (sparkles icon) → `/shamwari` — center position
+3. **Shamwari** (sparkles icon) → `/shamwari` — center position when the flag is on; hidden entirely while paused
 4. **History** (clock icon) → `/history`
 5. **My Weather** (map-pin button) → opens modal
 
@@ -1199,6 +1199,8 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 ### Shamwari AI Chat
 
 **Route:** `/shamwari` — full-viewport AI chat (Claude app style). The chatbot fills the screen between the sticky header and mobile bottom nav. Chat input is fixed above the mobile navigation bar.
+
+**Paused (`FLAGS.shamwari_chat = false`):** a standalone chatbot destination in primary nav doesn't match how weather apps work — users open a weather app to see the weather, not to choose between weather and a chat page. `src/app/shamwari/page.tsx` calls `notFound()` while the flag is off; the code below is otherwise untouched and fully reversible by flipping the flag back to `true`. AI stays available as an ambient enhancement elsewhere in the app (inline AI summaries, inline follow-up chat, AI-powered explore search) rather than a first-class destination.
 
 **Components:**
 
