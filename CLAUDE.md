@@ -309,7 +309,7 @@ mukoko-weather/
 │   │   ├── error-retry.test.ts
 │   │   ├── use-debounce.ts         # Shared useDebounce hook (generic, reusable across components)
 │   │   ├── use-debounce.test.ts
-│   │   ├── use-location-quick-search.ts      # Shared debounced /api/py/search hook (MyWeatherModal + ExploreSearch)
+│   │   ├── use-location-quick-search.ts      # Shared debounced /api/py/search hook (MyWeatherModal, ExploreSearch, HistoryDashboard, AviationPlanner)
 │   │   ├── use-location-quick-search.test.ts
 │   │   ├── utils.ts               # Tailwind class merging helper (cn) + getScrollBehavior (reduced-motion-aware scrolling)
 │   │   ├── utils.test.ts
@@ -1314,7 +1314,7 @@ _Library tests:_
 - `src/lib/accessibility.test.ts` — accessibility helpers
 - `src/lib/seed-ai-prompts.test.ts` — AI prompt/rule uniqueness, LOCATION DISCOVERY guardrails presence, structural integrity
 - `src/lib/use-debounce.test.ts` — useDebounce hook structure, exports, generic typing
-- `src/lib/use-location-quick-search.test.ts` — shared quick-search hook: debounce/limit defaults, cancellation, reset, deferred setState
+- `src/lib/use-location-quick-search.test.ts` — shared quick-search hook: debounce/limit/minLength defaults, cancellation, reset, error flag, deferred setState, all four consumer surfaces
 - `src/lib/weather-scenes/cache.test.ts` — weather hint cache (set/get, 2h TTL expiry, LRU eviction early-exit, localStorage cleanup)
 - `src/lib/weather-scenes/create-scene.test.ts` — scene factory (exports, dispose, scene types, fallback, cleanup)
 - `src/lib/weather-scenes/resolve-scene.test.ts` — weather code → scene type mapping (WMO codes, day/night, edge cases)
