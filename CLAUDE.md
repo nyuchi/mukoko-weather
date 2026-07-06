@@ -22,7 +22,7 @@ Social: Twitter @mukokoafrica, Instagram @mukoko.africa
 - **UI components:** shadcn/ui (new-york style, Lucide icons)
 - **Charts:** Chart.js 4 + react-chartjs-2 (Canvas 2D rendering via `src/components/ui/chart.tsx`)
 - **Maps:** MapLibre GL JS + MapTiler Cloud (vector tiles direct from CDN via `NEXT_PUBLIC_MAPTILER_API_KEY` — no server proxy; GPU-rendered; theme-aware streets-v2 / streets-v2-dark styles); Tomorrow.io raster weather overlays still proxied via `/api/py/map-tiles`
-- **Aviation:** NOAA Aviation Weather Center for METAR/TAF data; `@react-pdf/renderer` for pre-flight briefing PDFs; 70+ ICAO airports mapped (`src/lib/icao-codes.ts`, name + verified WGS 84 coords), seeded into the DB-backed `weather.airports` collection (2dsphere-indexed) via `POST /api/db-init` → `syncAirports`. Nearest-station lookup uses MongoDB `$geoNear` through `GET /api/py/airports/nearest`; the TS client `fetchNearestAirports(lat, lon, count)` prefers the DB result and falls back to the static `getNearestIcaos(lat, lon, count)` haversine scan when the DB/API is unavailable, so the location aviation station picker keeps working offline. `getNearestIcao(lat, lon)` remains the primary-station haversine fallback
+- **Aviation:** NOAA Aviation Weather Center for METAR/TAF data; `@react-pdf/renderer` for pre-flight briefing PDFs; 70+ ICAO airports mapped (`src/lib/icao-codes.ts`, name + verified WGS 84 coords), seeded into the DB-backed `weather.airports` collection (2dsphere-indexed) via `POST /api/db-init` → `syncAirports`. Nearest-station lookup uses MongoDB `$geoNear` through `GET /api/py/airports/nearest`; the TS client `fetchNearestAirports(lat, lon, count)` prefers the DB result and falls back to the static `getNearestIcaos(lat, lon, count)` haversine scan when the DB/API is unavailable, so the location aviation station picker keeps working offline. `getNearestIcao(lat, lon)` remains the primary-station haversine fallback. Flight-category (VFR/MVFR/IFR/LIFR) badge colors are centralized in `src/lib/flight-category-styles.ts` (`FLIGHT_CATEGORY_STYLES`, `getFlightCategoryClass()`), shared by `AviationWeather.tsx` (location page) and `AviationPlanner.tsx` (`/aviation`) so the safety-relevant color coding can't drift between the two
 - **Drag-and-drop:** `@dnd-kit/core` + `@dnd-kit/sortable` for user-reorderable sections on the location page
 - **Branding:** Mukoko brand kit doctrine v4.1.0 — 7 minerals (cobalt, tanzanite, malachite, gold, terracotta, sodalite, copper); Noto Serif (display/wordmark), Noto Sans (UI), JetBrains Mono (code/labels)
 - **Styling:** Tailwind CSS 4 with CSS custom properties (Brand System v6)
@@ -297,6 +297,8 @@ mukoko-weather/
 │   │   ├── geolocation.test.ts
 │   │   ├── weather-icons.tsx      # SVG weather/UI icons (MapPin, Clock, Search, Sun, Moon, etc.) + ActivityIcon
 │   │   ├── weather-icons.test.ts
+│   │   ├── flight-category-styles.ts    # Shared VFR/MVFR/IFR/LIFR badge color mapping (AviationWeather + AviationPlanner)
+│   │   ├── flight-category-styles.test.ts
 │   │   ├── i18n.ts                # Lightweight i18n (en complete, sn/nd ready)
 │   │   ├── i18n.test.ts
 │   │   ├── map-layers.ts          # Map layer config (Tomorrow.io tile layers, mineral color styles)
@@ -466,10 +468,13 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 **Rate limiting:** MongoDB-backed IP rate limiter (`check_rate_limit` in `_db.py`). Per-endpoint limits:
 
 - `/api/py/chat` — 20 req/hour
+- `/api/py/ai` — 30 req/hour (bucket key `ai-summary`; this route is reachable directly per `vercel.json`'s blanket `/api/py/(.*)` rewrite, not just via the authenticated `/api/ai/*` proxy, and every call writes into the same `ai_summaries` doc real visitors read)
 - `/api/py/ai/followup` — 30 req/hour
 - `/api/py/explore/search` — 15 req/hour
 - `/api/py/history/analyze` — 10 req/hour
 - `/api/py/locations/add` — 5 req/hour
+- `/api/py/geo?autoCreate=true` — 5 req/hour (bucket key `location-create`, shared with `/api/py/locations/add`'s coordinates mode — same expensive reverse-geocode + DB-write cost). The find-only path (`autoCreate=false`) stays unlimited since it's a cheap read
+- `/api/py/devices` (create) — 20 req/hour, only when `deviceId` is omitted/fresh (unbounded doc creation); an existing/caller-supplied `deviceId` is idempotent and skips the limiter
 - `/api/py/reports` (submit) — 5 req/hour
 - `/api/py/reports/clarify` — 10 req/hour
 
@@ -849,6 +854,7 @@ For weather alerts, status indicators, and severity levels, use the semantic sev
 - `--color-severity-severe` → severe/down (red in light, bright red in dark)
 - `--color-severity-extreme` → extreme (deep red in light, vivid red in dark)
 - `--color-severity-cold` → frost/cold risk (cobalt blue in light, sky blue in dark)
+- `--color-severity-fg` → foreground for text/badges rendered ON a severity color background (white in light mode since severity colors are dark there; near-black in dark mode since severity colors are bright there — same per-theme pattern as `--mineral-*-fg`). Use this instead of hardcoding `text-white` on a severity background — light-mode severity colors are dark enough for white text, but dark-mode severity colors are bright, so `text-white` on them fails contrast (this broke the aviation flight-category badges in dark mode until fixed)
 
 Use these via Tailwind: `text-severity-low`, `bg-severity-severe/10`, `border-severity-moderate/20`, etc.
 Never use generic Tailwind colors (`text-green-600`, `text-red-500`, `bg-amber-500`) — always use severity tokens or brand tokens.
@@ -1313,6 +1319,7 @@ _Library tests:_
 - `src/lib/analytics.test.ts` — centralized event tracking (GA4 + Vercel), no-op on server, missing gtag, all event types
 - `src/lib/feature-flags.test.ts` — flag definitions, default values, localStorage overrides, SSR fallback, getFeatureFlag equivalence
 - `src/lib/weather-icons.test.ts` — weather icon mapping
+- `src/lib/flight-category-styles.test.ts` — VFR/MVFR/IFR/LIFR color mapping, theme-aware severity-fg usage (not hardcoded white text)
 - `src/lib/error-retry.test.ts` — error retry logic
 - `src/lib/accessibility.test.ts` — accessibility helpers
 - `src/lib/seed-ai-prompts.test.ts` — AI prompt/rule uniqueness, LOCATION DISCOVERY guardrails presence, structural integrity
