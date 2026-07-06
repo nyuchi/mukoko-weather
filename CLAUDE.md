@@ -165,7 +165,7 @@ mukoko-weather/
 │   │   │   └── tabs.tsx              # Tabs (Radix, border-bottom active indicator)
 │   │   ├── brand/                    # Branding components
 │   │   │   ├── MukokoLogo.tsx        # Logo with text fallback
-│   │   │   ├── MineralsStripe.tsx    # 5-mineral decorative stripe
+│   │   │   ├── MineralsStripe.tsx    # 7-mineral decorative stripe (main layout only — covered by modal overlays, z-20)
 │   │   │   ├── ThemeProvider.tsx     # Syncs Zustand theme to document, listens for OS changes
 │   │   │   └── ThemeToggle.tsx       # Light/dark/system mode toggle (3-state cycle)
 │   │   ├── analytics/
@@ -218,8 +218,6 @@ mukoko-weather/
 │   │   │   ├── WelcomeBanner.tsx      # Inline welcome banner for first-time visitors (replaces auto-modal)
 │   │   │   ├── WelcomeBanner.test.ts
 │   │   │   ├── MyWeatherModal.tsx     # Centralized preferences modal (location, activities, settings)
-│   │   │   ├── SavedLocationsModal.tsx # Saved locations manager (browse, add, remove, geolocation)
-│   │   │   ├── SavedLocationsModal.test.ts
 │   │   │   ├── SupportBanner.tsx           # Buy Me a Coffee inline support card (BMC brand yellow)
 │   │   │   ├── SupportBanner.test.ts       # SupportBanner tests (structure, accessibility, isolation)
 │   │   │   ├── WeatherLoadingScene.tsx # Branded Three.js weather loading animation (weather-aware scenes, respects prefers-reduced-motion)
@@ -307,6 +305,8 @@ mukoko-weather/
 │   │   ├── error-retry.test.ts
 │   │   ├── use-debounce.ts         # Shared useDebounce hook (generic, reusable across components)
 │   │   ├── use-debounce.test.ts
+│   │   ├── use-location-quick-search.ts      # Shared debounced /api/py/search hook (MyWeatherModal + ExploreSearch)
+│   │   ├── use-location-quick-search.test.ts
 │   │   ├── utils.ts               # Tailwind class merging helper (cn) + getScrollBehavior (reduced-motion-aware scrolling)
 │   │   ├── utils.test.ts
 │   │   ├── accessibility.test.ts  # Accessibility helpers tests
@@ -789,8 +789,6 @@ weather.stationObservations → QC pipeline → weather.observations
 - `removeLocation(slug)` — removes a location from saved list, queues device sync
 - `myWeatherOpen: boolean` — controls My Weather modal visibility (not persisted)
 - `openMyWeather()` / `closeMyWeather()` — toggle the modal
-- `savedLocationsOpen: boolean` — controls Saved Locations modal visibility (not persisted)
-- `openSavedLocations()` / `closeSavedLocations()` — toggle the modal
 - `hasOnboarded: boolean` — tracks whether user has completed onboarding (persisted to localStorage, synced to server)
 - `completeOnboarding()` — sets `hasOnboarded: true`, queues device sync
 - `shamwariContext: ShamwariContext | null` — carries weather/location/summary data between pages (not persisted)
@@ -808,7 +806,7 @@ weather.stationObservations → QC pipeline → weather.observations
 **Persistence:**
 
 - Uses Zustand `persist` middleware with `partialize` — `theme`, `selectedLocation`, `savedLocations`, `selectedActivities`, and `hasOnboarded` are saved to localStorage under key `mukoko-weather-prefs`
-- `myWeatherOpen`, `savedLocationsOpen`, `shamwariContext`, and `reportModalOpen` are transient (reset on page load)
+- `myWeatherOpen`, `shamwariContext`, and `reportModalOpen` are transient (reset on page load)
 - `onRehydrateStorage` callback applies the persisted theme to the DOM on load
 
 **Device Sync:**
@@ -1068,7 +1066,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 Weather reporting (previously a header megaphone icon) is triggered from the in-page `RecentReports` "Report Weather" button instead — the header no longer duplicates that entry point.
 
-The header also renders `WeatherReportModal` and `SavedLocationsModal` (both lazy-loaded, only mount when their respective store state is true). `SavedLocationsModal` is additionally wrapped in `ChartErrorBoundary` so a crash in the modal never takes down the header.
+The header also renders `WeatherReportModal` (lazy-loaded, only mounts when `reportModalOpen` is true) and `MyWeatherModal` (lazy-loaded, only mounts when `myWeatherOpen` is true).
 
 The header takes no props — location context comes from the URL path.
 
@@ -1082,26 +1080,13 @@ The header takes no props — location context comes from the URL path.
 
 **My Weather Modal** (`src/components/weather/MyWeatherModal.tsx`): A centralized preferences modal (shadcn Dialog + Tabs) with three tabs:
 
-- **Location** — search input, geolocation button, tag filter pills, scrollable location list with pending-slug highlighting. Selecting a location sets it as _pending_ (does not navigate immediately).
+- **Location** — search input (via the shared `useLocationQuickSearch` hook — also used by `ExploreSearch`), geolocation button, tag filter pills, scrollable location list with pending-slug highlighting. Selecting a location sets it as _pending_ (does not navigate immediately).
 - **Activities** — category tabs (mineral-colored), search, 2-column activity grid with toggle selection. Uses `CATEGORY_STYLES` for consistent mineral color theming. Auto-scrolls into view after location selection.
 - **Settings** — theme radio group (light/dark/system) with visual indicators.
 
 **Welcome Banner** (`src/components/weather/WelcomeBanner.tsx`): Inline banner shown to first-time visitors (`hasOnboarded === false`) above the weather grid. Replaces the old auto-opening modal approach which caused a disruptive loading sequence. Two buttons: "Personalise" (opens My Weather modal) and "Continue with {locationName}" (marks onboarding complete). Both buttons use 56px min-height touch targets.
 
 **Deferred navigation:** Location and activity selection are unified — picking a location (either manually or via geolocation) highlights it as pending and auto-advances to the Activities tab so the user can also select activities before navigating. The Done/Apply button commits both choices at once. Navigation only occurs on Done/Apply, not on location tap or geolocation detection. Built with shadcn Dialog (Radix), Tabs, Input, Button, and Badge components.
-
-**Saved Locations Modal** (`src/components/weather/SavedLocationsModal.tsx`): A full-screen dialog (100dvh on mobile, auto-sized on desktop) for browsing, managing, and adding saved locations — up to `MAX_SAVED_LOCATIONS` (10).
-
-**Features:**
-
-- **Current location detection** — geolocation button with feedback states (detecting, denied, error), option to save detected location
-- **Saved locations list** — displays saved location slugs with province context, checkmark for currently-viewed location, trash icon per location for removal. Shows loading skeleton while fetching location details; falls back to title-cased slug display if API lookup fails
-- **Add location search** — debounced search input (via shared `useDebounce` hook from `@/lib/use-debounce`) calling `/api/py/search`, filters out already-saved slugs, disabled at capacity
-- **Capacity management** — displays count (e.g., "5/10"), disables add button when cap is reached
-
-**Interaction flow:** Tap layers icon in header pill → modal opens showing saved locations or empty state → tap location to navigate and close → tap trash to remove → tap + to search and add new locations → tap current location button for GPS detection.
-
-**Icons:** Uses `MapPinIcon`, `SearchIcon`, `TrashIcon`, `PlusIcon`, `NavigationIcon` from `@/lib/weather-icons`.
 
 ### Weather Loading Scenes (Three.js)
 
@@ -1231,7 +1216,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Components:**
 
 - `src/app/explore/page.tsx` — server component (ISR 1h), fetches tag counts and featured tags, renders AI search + Shamwari CTA card + category browse grid + country browse link
-- `src/components/explore/ExploreSearch.tsx` — client component with two layers: (1) **instant quick matches** — the same debounced (300ms) fast name/tag search used by `MyWeatherModal`'s location picker (`GET /api/py/search?q=...&limit=6`, `AbortController`-cancelled on rapid typing), shown live as the user types, as plain location links; (2) **AI search** — natural-language query (e.g., "farming areas with low frost risk"), submitted explicitly, results render as location cards with inline weather data. This keeps the quick-match experience consistent everywhere in the app search is offered, while AI search remains an additional, deliberate step. Renders the shared `ShamwariCTA` (`source: "explore"` + `exploreQuery`) as its "Ask Shamwari for more" link
+- `src/components/explore/ExploreSearch.tsx` — client component with two layers: (1) **instant quick matches** — via the shared `useLocationQuickSearch` hook (`src/lib/use-location-quick-search.ts`), the same one `MyWeatherModal`'s Location tab uses (`GET /api/py/search?q=...`, debounced, `AbortController`-cancelled on rapid typing), shown live as the user types, as plain location links; (2) **AI search** — natural-language query (e.g., "farming areas with low frost risk"), submitted explicitly, results render as location cards with inline weather data. One shared hook keeps the quick-match experience consistent everywhere in the app search is offered — debounce timing, cancellation, and result shape can't silently drift between surfaces — while AI search remains an additional, deliberate step. Renders the shared `ShamwariCTA` (`source: "explore"` + `exploreQuery`) as its "Ask Shamwari for more" link
 - **API:** `GET /api/py/search` — fast literal name/tag/geo text search (same endpoint as `MyWeatherModal`'s saved-locations search). `POST /api/py/explore/search` — uses Claude with `search_locations` + `get_weather` tools for natural-language queries. Falls back to text search if AI unavailable. Rate-limited 15 req/hour/IP
 
 **Sub-routes:**
@@ -1249,7 +1234,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 
 Users can submit real-time ground-truth weather observations, similar to Waze for road incidents.
 
-**Report types (10):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, fog, dust, frost
+**Report types (13):** light-rain, heavy-rain, thunderstorm, hail, flooding, strong-wind, clear-skies, cloudy, fog, mist, haze, dust, frost. All 13 render with the app's SVG weather-icon set (`WeatherReportModal.tsx` and `RecentReports.tsx` share the same icon-per-type mapping) rather than emoji.
 **Severity levels (3):** mild (24h TTL), moderate (48h TTL), severe (72h TTL)
 
 **Components:**
@@ -1306,7 +1291,7 @@ _Library tests:_
 - `src/lib/suitability.test.ts` — suitability rule evaluation, condition matching, metric template resolution
 - `src/lib/countries.test.ts` — country/province data, flag emoji, province slug generation
 - `src/lib/tomorrow.test.ts` — Tomorrow.io weather code mapping, response normalization, insights extraction
-- `src/lib/store.test.ts` — theme resolution (light/dark/system), SSR fallback, ShamwariContext set/clear/expiry, savedLocations CRUD/cap/persistence, savedLocationsOpen toggle
+- `src/lib/store.test.ts` — theme resolution (light/dark/system), SSR fallback, ShamwariContext set/clear/expiry, savedLocations CRUD/cap/persistence
 - `src/lib/suggested-prompts.test.ts` — suggested prompt generation, weather condition matching, max 3 cap
 - `src/lib/device-sync.test.ts` — device sync CRUD, debounced sync, migration, beforeunload
 - `src/lib/map-layers.test.ts` — map layer config, default layer, getMapLayerById
@@ -1324,6 +1309,7 @@ _Library tests:_
 - `src/lib/accessibility.test.ts` — accessibility helpers
 - `src/lib/seed-ai-prompts.test.ts` — AI prompt/rule uniqueness, LOCATION DISCOVERY guardrails presence, structural integrity
 - `src/lib/use-debounce.test.ts` — useDebounce hook structure, exports, generic typing
+- `src/lib/use-location-quick-search.test.ts` — shared quick-search hook: debounce/limit defaults, cancellation, reset, deferred setState
 - `src/lib/weather-scenes/cache.test.ts` — weather hint cache (set/get, 2h TTL expiry, LRU eviction early-exit, localStorage cleanup)
 - `src/lib/weather-scenes/create-scene.test.ts` — scene factory (exports, dispose, scene types, fallback, cleanup)
 - `src/lib/weather-scenes/resolve-scene.test.ts` — weather code → scene type mapping (WMO codes, day/night, edge cases)
@@ -1386,7 +1372,6 @@ _Page/component tests:_
 - `src/components/weather/AISummaryChat.test.ts` — inline follow-up chat structure, max message cap, accessibility
 - `src/components/weather/HistoryAnalysis.test.ts` — analysis structure, endpoint, request body, ShamwariContext, accessibility
 - `src/components/weather/ShamwariCTA.test.ts` — shared Shamwari handoff link: feature-flag gate, context handoff, variants
-- `src/components/weather/SavedLocationsModal.test.ts` — modal structure, icons, search, geolocation, loading skeleton, capacity management, accessibility
 - `src/components/weather/WeatherLoadingScene.test.ts` — KNOWN_ROUTES guard, reduced-motion support, Three.js integration, slug display, accessibility
 - `src/components/weather/reports/WeatherReportModal.test.ts` — 3-step wizard, report types, severity, accessibility
 - `src/components/weather/reports/RecentReports.test.ts` — report list, upvoting, report trigger, UI patterns
