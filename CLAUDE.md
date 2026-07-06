@@ -1070,13 +1070,14 @@ The header also renders `WeatherReportModal` (lazy-loaded, only mounts when `rep
 
 The header takes no props — location context comes from the URL path.
 
-**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 4 always-on items, plus a 5th (Shamwari) gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags):
+**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed floating-pill bottom nav with 5 always-on items, plus a 6th (Shamwari) gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags):
 
 1. **Weather** (home icon) → `/`
 2. **Explore** (compass icon) → `/explore`
-3. **Shamwari** (sparkles icon) → `/shamwari` — center position when the flag is on; hidden entirely while paused
-4. **History** (clock icon) → `/history`
-5. **My Weather** (map-pin button) → opens modal
+3. **Shamwari** (sparkles icon) → `/shamwari` — hidden entirely while paused
+4. **My Location** (navigation-arrow button, centre slot) — GPS action, not a route: runs the shared `detectUserLocation({ autoCreate: true })` flow (via deferred `import("@/lib/geolocation")` so the header bundle stays lean), then navigates to the detected location and syncs `selectedLocation`. Shows a `Spinner` while locating (double-tap guarded, `aria-busy`). On denial/unavailability/error it opens the My Weather modal instead — its Location tab has search plus a geolocation retry with proper error copy. Fires `geolocation_result` and, on success, `location_changed` (`method: "geolocation"`) analytics events
+5. **History** (clock icon) → `/history`
+6. **My Weather** (map-pin button) → opens modal
 
 **My Weather Modal** (`src/components/weather/MyWeatherModal.tsx`): A centralized preferences modal (shadcn Dialog + Tabs) with three tabs:
 
