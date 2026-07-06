@@ -5,6 +5,7 @@ import Link from "next/link";
 import { SearchIcon, MapPinIcon, SparklesIcon } from "@/lib/weather-icons";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { weatherCodeToInfo } from "@/lib/weather";
 import { trackEvent } from "@/lib/analytics";
 import { useDebounce } from "@/lib/use-debounce";
@@ -50,6 +51,7 @@ export function ExploreSearch() {
   const [searched, setSearched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const setShamwariContext = useAppStore((s) => s.setShamwariContext);
+  const shamwariEnabled = isFeatureEnabled("shamwari_chat");
 
   // Instant quick matches (same fast name/tag search + debounce pattern as
   // the My Weather modal's location search) — shown live as the user types,
@@ -289,7 +291,7 @@ export function ExploreSearch() {
         </div>
       )}
 
-      {searched && results.length > 0 && (
+      {shamwariEnabled && searched && results.length > 0 && (
         <div className="flex justify-center">
           <Link
             href="/shamwari"

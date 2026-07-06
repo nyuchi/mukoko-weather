@@ -176,7 +176,7 @@ mukoko-weather/
 │   │   │   ├── ExploreSearch.tsx     # AI-powered natural-language location search
 │   │   │   └── ExploreSearch.test.ts
 │   │   ├── layout/
-│   │   │   ├── Header.tsx            # Sticky header + 5-item mobile bottom nav (Weather/Explore/Shamwari/History/My Weather)
+│   │   │   ├── Header.tsx            # Sticky header + mobile bottom nav (Weather/Explore/History/My Weather; Shamwari paused, see FLAGS.shamwari_chat)
 │   │   │   ├── HeaderSkeleton.tsx    # Header loading skeleton
 │   │   │   └── Footer.tsx            # Footer with site stats, copyright, links, Ubuntu philosophy
 │   │   ├── weather/
@@ -512,7 +512,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/[location]/atmosphere` — 24-hour atmospheric detail charts (humidity, wind, pressure, UV) for a location
 - `/[location]/forecast` — hourly (24h) + daily (7-day) forecast charts + sunrise/sunset for a location
 - `/[location]/map` — full-viewport interactive weather map with layer switcher (precipitation, cloud, temperature, wind)
-- `/shamwari` — Shamwari AI chat (full-viewport, Claude app style, input above mobile nav)
+- `/shamwari` — Shamwari AI chat (full-viewport, Claude app style, input above mobile nav). **Paused** — `notFound()`s while `FLAGS.shamwari_chat` is `false` (see Feature Flags section)
 - `/explore` — browse locations by category and country (ISR 1h)
 - `/explore/[tag]` — browse locations filtered by tag (city, farming, mining, tourism, etc.)
 - `/explore/country` — browse locations by country index
@@ -524,6 +524,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/terms` — terms of service
 - `/help` — user help/FAQ
 - `/history` — historical weather data dashboard (search, multi-day charts, data table)
+- `/profile` — signed-in account page (avatar/name/email, sign out, entry point into My Weather preferences). Reached via the header's account icon; anonymous visitors are redirected to sign-in
 - `/embed` — widget embedding docs
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
@@ -1002,7 +1003,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 `src/lib/feature-flags.ts` — lightweight, type-safe, client-side feature flag system. No SaaS dependency.
 
-**Flag definitions:** Code-defined `FLAGS` object with boolean defaults. All currently-shipped features are `true`. Experimental/future features (`premium_maps`, `vector_search`, `multi_language`) are `false`.
+**Flag definitions:** Code-defined `FLAGS` object with boolean defaults. All currently-shipped features are `true`. Experimental/future features (`premium_maps`, `vector_search`, `multi_language`) are `false`. `shamwari_chat` is also `false` — not experimental, _paused_: a standalone chatbot destination in primary nav doesn't match how weather apps work, so `/shamwari` currently 404s (`notFound()` in `src/app/shamwari/page.tsx`) and every "Ask/Continue/Discuss in Shamwari" CTA across the app (`Header`, `Footer`, `AISummaryChat`, `HistoryAnalysis`, `ExploreSearch`, `explore/page.tsx`, `developers/page.tsx`) is gated behind the same flag so nothing dead-ends at a 404. AI stays available as an ambient enhancement — inline AI summaries, the inline follow-up chat, AI-powered explore search — rather than a first-class nav destination. Flip the flag to `true` to bring the page and all its entry points back.
 
 **API:**
 
@@ -1044,24 +1045,25 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 **Header** (`src/components/layout/Header.tsx`): Sticky header with the Mukoko logo on the left, desktop nav links in the center, and a pill-shaped icon group on the right.
 
-**Desktop nav links** (hidden on mobile, `sm:flex`): Explore | Shamwari | History — text links with active state highlighting.
+**Desktop nav links** (hidden on mobile, `sm:flex`): Explore | Shamwari | History | Aviation — text links with active state highlighting, plus a **My Weather** button (opens the My Weather modal — a button rather than a `Link` since it's not a route). My Weather intentionally lives in the text-nav row rather than the icon pill so anonymous desktop users keep a way to reach it (mobile has its own separate bottom-nav entry, unaffected by this). Shamwari is gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags) and omitted from the array while off.
 
-**Action pill** (`bg-primary`, four 48px circular icon buttons):
+**Action pill** (`bg-primary`, 44px circular icon buttons — map, notifications, account only):
 
-1. **Compass icon** — links to `/explore` (Explore locations)
-2. **Layers icon** — links to `/${selectedLocation}/map` (Weather map)
-3. **Megaphone icon** — opens the Weather Report modal (Report current weather)
-4. **Map pin icon** — opens the My Weather modal (Preferences)
+1. **Layers icon** — links to `/${selectedLocation}/map` (Weather map)
+2. **Bell icon** — toggles a notifications popover (currently a stub — "No notifications yet"; dismisses on outside click)
+3. **Account icon** — signed out: generic user icon linking to `/auth/signin`. Signed in: avatar (profile picture or initials via `initialsFor()` from `src/lib/user-display.ts`) linking straight to `/profile` — no dropdown menu.
+
+Weather reporting (previously a header megaphone icon) is triggered from the in-page `RecentReports` "Report Weather" button instead — the header no longer duplicates that entry point.
 
 The header also renders `WeatherReportModal` and `SavedLocationsModal` (both lazy-loaded, only mount when their respective store state is true). `SavedLocationsModal` is additionally wrapped in `ChartErrorBoundary` so a crash in the modal never takes down the header.
 
 The header takes no props — location context comes from the URL path.
 
-**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 5 items:
+**Mobile Bottom Navigation** (visible `sm:hidden`): Fixed bottom nav with 4 always-on items, plus a 5th (Shamwari) gated behind `FLAGS.shamwari_chat` (currently paused, see Feature Flags):
 
 1. **Weather** (home icon) → `/`
 2. **Explore** (compass icon) → `/explore`
-3. **Shamwari** (sparkles icon) → `/shamwari` — center position
+3. **Shamwari** (sparkles icon) → `/shamwari` — center position when the flag is on; hidden entirely while paused
 4. **History** (clock icon) → `/history`
 5. **My Weather** (map-pin button) → opens modal
 
@@ -1197,6 +1199,8 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 ### Shamwari AI Chat
 
 **Route:** `/shamwari` — full-viewport AI chat (Claude app style). The chatbot fills the screen between the sticky header and mobile bottom nav. Chat input is fixed above the mobile navigation bar.
+
+**Paused (`FLAGS.shamwari_chat = false`):** a standalone chatbot destination in primary nav doesn't match how weather apps work — users open a weather app to see the weather, not to choose between weather and a chat page. `src/app/shamwari/page.tsx` calls `notFound()` while the flag is off; the code below is otherwise untouched and fully reversible by flipping the flag back to `true`. AI stays available as an ambient enhancement elsewhere in the app (inline AI summaries, inline follow-up chat, AI-powered explore search) rather than a first-class destination.
 
 **Components:**
 
@@ -1433,19 +1437,22 @@ Repeated Tailwind chains (3+ uses) are extracted into named component classes in
 
 **Current palette:**
 
-| Class            | Purpose                                    | Replaces                                                                                    |
-| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `.kudu`          | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...`                                                   |
-| `.impala`        | Secondary/outline pill button              | `border border-border bg-transparent px-5 py-3 ...`                                         |
-| `.bee`           | Round icon button (mukoko = beehive)       | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...` |
-| `.baobab`        | Primary card surface                       | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm`                       |
-| `.acacia`        | Quieter card surface                       | `rounded-card border border-border bg-surface-card p-4`                                     |
-| `.giraffe`       | Section heading (tall, stands above)       | `text-base font-semibold text-text-primary font-heading`                                    |
-| `.gazelle`       | Body paragraph copy                        | `text-base text-text-secondary leading-relaxed`                                             |
-| `.dove`          | Muted secondary text                       | `text-sm text-text-tertiary`                                                                |
-| `.weaver`        | Primary nav link                           | `inline-flex items-center text-base font-medium text-text-secondary hover:...`              |
-| `.weaver-active` | Active nav link (cobalt + underline)       | active variant of `.weaver`                                                                 |
-| `.chameleon`     | Skeleton placeholder                       | `animate-pulse rounded-card border border-surface-dim bg-surface-card shadow-sm`            |
+| Class            | Purpose                                    | Replaces                                                                                                                  |
+| ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `.kudu`          | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...`                                                                                 |
+| `.kudu-sm`       | Smaller primary pill (compact toolbars)    | `rounded-button bg-primary px-5 py-2.5 ...` + `min-h-[var(--touch-target-min)]`                                           |
+| `.impala`        | Secondary/outline pill button              | `border border-border bg-transparent px-5 py-3 ...`                                                                       |
+| `.impala-sm`     | Smaller outline pill (compact toolbars)    | `border border-border bg-transparent px-5 py-2.5 ...` + `min-h-[var(--touch-target-min)]`                                 |
+| `.bee`           | Round icon button (mukoko = beehive)       | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...`                               |
+| `.hoopoe`        | Round avatar (initials or profile picture) | `flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10` (also `.hoopoe-lg` h-9, `.hoopoe-xl` h-12) |
+| `.baobab`        | Primary card surface                       | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm`                                                     |
+| `.acacia`        | Quieter card surface                       | `rounded-card border border-border bg-surface-card p-4`                                                                   |
+| `.giraffe`       | Section heading (tall, stands above)       | `text-base font-semibold text-text-primary font-heading`                                                                  |
+| `.gazelle`       | Body paragraph copy                        | `text-base text-text-secondary leading-relaxed`                                                                           |
+| `.dove`          | Muted secondary text                       | `text-sm text-text-tertiary`                                                                                              |
+| `.weaver`        | Primary nav link                           | `inline-flex items-center text-base font-medium text-text-secondary hover:...`                                            |
+| `.weaver-active` | Active nav link (cobalt + underline)       | active variant of `.weaver`                                                                                               |
+| `.chameleon`     | Skeleton placeholder                       | `animate-pulse rounded-card border border-surface-dim bg-surface-card shadow-sm`                                          |
 
 **Rules:**
 
@@ -1603,16 +1610,17 @@ mukoko-weather uses **WorkOS AuthKit** (`@workos-inc/authkit-nextjs`) for user a
 
 ### Pieces
 
-| File                                                        | Role                                                                                                                                                                                                                                   |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/proxy.ts`                                              | Edge middleware. Calls `authkit(request)` on every request to refresh the WorkOS session, then layers our existing `lastLocation` cookie / home-page redirect logic via `handleAuthkitProxy` (so AuthKit headers survive the redirect) |
-| `src/app/callback/route.ts`                                 | OAuth callback handler. Wraps `handleAuth({ onSuccess })` — on a successful WorkOS exchange, calls `upsertPlatformPerson(user)` to mirror the user into `identity.persons`                                                             |
-| `src/app/auth/signin/route.ts`                              | Server redirect to the WorkOS-hosted sign-in URL (`getSignInUrl()`)                                                                                                                                                                    |
-| `src/app/auth/signout/route.ts`                             | Server route that invokes `signOut({ returnTo: "/" })` — clears the session cookie and redirects through WorkOS logout                                                                                                                 |
-| `src/lib/auth.ts`                                           | Server helpers: `getCurrentUser()` (returns user or null), `requireUser()` (enforces sign-in), `upsertPlatformPerson()` (the dedup-disciplined identity.persons writer). Re-exports `getSignInUrl`, `signOut`                          |
-| `src/components/auth/UserMenu.tsx`                          | Header slot — uses `useAuth()` from `@workos-inc/authkit-nextjs/components` (client). Signed-in users see a `.hoopoe` avatar + email + `Sign out` (`.impala`); anonymous users see a `Sign in` (`.kudu-sm`) link                       |
-| `src/components/auth/SignInButton.tsx`, `SignOutButton.tsx` | Reusable buttons that link to `/auth/signin` and `/auth/signout` respectively                                                                                                                                                          |
-| `src/app/layout.tsx`                                        | Wraps the entire tree in `<AuthKitProvider initialAuth={…}>`. `initialAuth` is hydrated server-side via `withAuth()` (minus `accessToken`) so the client renders the right state on first paint with no fetch waterfall                |
+| File                                                        | Role                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/proxy.ts`                                              | Edge middleware. Calls `authkit(request)` on every request to refresh the WorkOS session, then layers our existing `lastLocation` cookie / home-page redirect logic via `handleAuthkitProxy` (so AuthKit headers survive the redirect)                                                                                                                                  |
+| `src/app/callback/route.ts`                                 | OAuth callback handler. Wraps `handleAuth({ onSuccess })` — on a successful WorkOS exchange, calls `upsertPlatformPerson(user)` to mirror the user into `identity.persons`                                                                                                                                                                                              |
+| `src/app/auth/signin/route.ts`                              | Server redirect to the WorkOS-hosted sign-in URL (`getSignInUrl()`)                                                                                                                                                                                                                                                                                                     |
+| `src/app/auth/signout/route.ts`                             | Server route that invokes `signOut({ returnTo: "/" })` — clears the session cookie and redirects through WorkOS logout                                                                                                                                                                                                                                                  |
+| `src/lib/auth.ts`                                           | Server helpers: `getCurrentUser()` (returns user or null), `requireUser()` (enforces sign-in), `upsertPlatformPerson()` (the dedup-disciplined identity.persons writer). Re-exports `getSignInUrl`, `signOut`                                                                                                                                                           |
+| `src/components/auth/SignInButton.tsx`, `SignOutButton.tsx` | Reusable buttons that link to `/auth/signin` and `/auth/signout` respectively                                                                                                                                                                                                                                                                                           |
+| `src/app/layout.tsx`                                        | Wraps the entire tree in `<AuthKitProvider initialAuth={…}>`. `initialAuth` is hydrated server-side via `withAuth()` (minus `accessToken`) so the client renders the right state on first paint with no fetch waterfall                                                                                                                                                 |
+| `src/lib/user-display.ts`                                   | Shared client-safe helpers (`initialsFor`, `displayNameFor`) for rendering a WorkOS user — used by the header's account icon and `/profile`. Replaces the standalone `UserMenu` component (removed): the account icon now lives inside the header's icon pill and routes straight to `/auth/signin` or `/profile` instead of rendering an inline avatar + Sign out link |
+| `src/app/profile/page.tsx` + `ProfileClient.tsx`            | `/profile` — `await requireUser()` gated. Server page fetches the WorkOS user; `ProfileClient` renders account details + a button that opens the existing My Weather modal (`openMyWeather()`) rather than duplicating its Location/Activities/Settings tabs                                                                                                            |
 
 ### Sign-in flow
 
@@ -1658,6 +1666,7 @@ The app is **public by default** — weather pages, explore, search, maps, and e
 | `/shamwari`                                 | Page-level      | `await requireUser()` at the top of the server component → AuthKit redirects anon users to sign-in                                                                                                                                                                        |
 | `/aviation`                                 | Page-level      | `await requireUser()` (METAR/TAF planner + PDF briefings)                                                                                                                                                                                                                 |
 | `/history`                                  | Page-level      | `await requireUser()` (historical analysis dashboard)                                                                                                                                                                                                                     |
+| `/profile`                                  | Page-level      | `await requireUser()` (account details + My Weather preferences entry point, reached via the header's account icon)                                                                                                                                                       |
 | `/api/ai/*`                                 | Route-level     | Next.js proxy at `src/app/api/ai/[...path]/route.ts` calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers                                                                             |
 | `AISummary` widget on public location pages | Component-level | Receives a `user: AISummaryUser \| null` prop hydrated server-side via `getCurrentUser()` in `/[location]/page.tsx`. Anonymous users see a `.baobab` sign-in CTA (with `.kudu-sm` button → `/auth/signin?returnTo=<current>`). Signed-in users see the summary as before. |
 | `AISummaryChat` follow-up                   | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA.                                                                                                                                                                                                |

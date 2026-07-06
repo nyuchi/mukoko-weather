@@ -1,12 +1,14 @@
 "use client";
 
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { MukokoLogo } from "@/components/brand/MukokoLogo";
-import { MapPinIcon, ClockIcon, SparklesIcon, MegaphoneIcon, LayersIcon } from "@/lib/weather-icons";
+import { MapPinIcon, ClockIcon, SparklesIcon, LayersIcon, BellIcon, UserIcon } from "@/lib/weather-icons";
 import { useAppStore } from "@/lib/store";
-import { UserMenu } from "@/components/auth/UserMenu";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { initialsFor, type PublicUser } from "@/lib/user-display";
 
 // Code-split: MyWeatherModal imports LOCATIONS (154 items), ACTIVITIES (20 items),
 // geolocation, router, etc. Lazy-loading prevents this from bloating the initial
@@ -45,10 +47,15 @@ export function Header() {
   const openMyWeather = useAppStore((s) => s.openMyWeather);
   const myWeatherOpen = useAppStore((s) => s.myWeatherOpen);
   const selectedLocation = useAppStore((s) => s.selectedLocation);
-  const openReportModal = useAppStore((s) => s.openReportModal);
   const reportModalOpen = useAppStore((s) => s.reportModalOpen);
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  // AuthKit's `useAuth()` is hydrated via `<AuthKitProvider initialAuth={…}>`
+  // in the root layout, so this renders with the right state on first paint.
+  const { user } = useAuth();
+  const authedUser = user as PublicUser | null;
 
   // Scroll detection for dynamic header background
   useEffect(() => {
@@ -61,12 +68,24 @@ export function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Dismiss the notifications popover on outside click.
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [notificationsOpen]);
+
   // Determine which mobile nav item is active based on pathname
-  const isShamwari = pathname === "/shamwari";
   const isExplore = pathname === "/explore" || pathname.startsWith("/explore/");
   const isHistory = pathname === "/history";
   const isAviation = pathname === "/aviation";
-  const isHome = !isShamwari && !isExplore && !isHistory && !isAviation && !pathname.startsWith("/about") && !pathname.startsWith("/help") && !pathname.startsWith("/privacy") && !pathname.startsWith("/terms") && !pathname.startsWith("/status") && !pathname.startsWith("/embed");
+  const isHome = !isExplore && !isHistory && !isAviation && !pathname.startsWith("/about") && !pathname.startsWith("/help") && !pathname.startsWith("/privacy") && !pathname.startsWith("/terms") && !pathname.startsWith("/status") && !pathname.startsWith("/embed") && !pathname.startsWith("/shamwari");
+  const shamwariEnabled = isFeatureEnabled("shamwari_chat");
 
   return (
     <>
@@ -94,7 +113,8 @@ export function Header() {
           <nav className="hidden sm:flex items-center gap-6" aria-label="Main navigation">
             {[
               { href: "/explore", label: "Explore", active: isExplore },
-              { href: "/shamwari", label: "Shamwari", active: isShamwari },
+              // Paused as a standalone destination — see FLAGS.shamwari_chat.
+              ...(shamwariEnabled ? [{ href: "/shamwari", label: "Shamwari", active: pathname === "/shamwari" }] : []),
               { href: "/history", label: "History", active: isHistory },
               { href: "/aviation", label: "Aviation", active: isAviation },
             ].map(({ href, label, active }) => (
@@ -108,9 +128,20 @@ export function Header() {
                 {label}
               </Link>
             ))}
+            {/* My Weather opens a modal (not a route), so it's a button rather
+                than a Link, but styled identically to the other nav items. It
+                lives outside the icon group below — that group is reserved
+                for map / notifications / account, and My Weather must stay
+                reachable for anonymous desktop users too (mobile keeps its
+                own separate bottom-nav entry, unaffected). */}
+            <button type="button" onClick={openMyWeather} className="weaver">
+              My Weather
+            </button>
           </nav>
 
-          {/* Action pill — quick actions: Maps, Report, My Weather + auth slot */}
+          {/* Action pill — map, notifications, account. Sign-in/avatar lives
+              inside the group (not floating separately) and routes straight
+              to sign-in or the profile page — no dropdown menu. */}
           {/* 44px buttons, 18px icons — compact desktop pill */}
           <div className="flex shrink-0 items-center gap-2">
             <div
@@ -126,30 +157,63 @@ export function Header() {
               >
                 <LayersIcon size={20} className="text-primary-foreground" />
               </Link>
-              <button
-                onClick={openReportModal}
-                aria-label="Report current weather"
-                className="bee"
-                type="button"
-              >
-                <MegaphoneIcon size={20} className="text-primary-foreground" />
-              </button>
-              <button
-                onClick={openMyWeather}
-                aria-label="Open My Weather preferences"
-                className="bee"
-                type="button"
-              >
-                <MapPinIcon size={20} className="text-primary-foreground" />
-              </button>
+
+              <div className="relative" ref={notificationsRef}>
+                <button
+                  onClick={() => setNotificationsOpen((v) => !v)}
+                  aria-label="Notifications"
+                  aria-haspopup="true"
+                  aria-expanded={notificationsOpen}
+                  className="bee"
+                  type="button"
+                >
+                  <BellIcon size={20} className="text-primary-foreground" />
+                </button>
+                {notificationsOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Notifications"
+                    className="absolute right-0 top-full z-40 mt-2 w-64 rounded-[var(--radius-card)] border border-text-tertiary/10 bg-surface-card p-4 shadow-lg"
+                  >
+                    <p className="dove" aria-live="polite">
+                      No notifications yet
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {authedUser ? (
+                <Link
+                  href="/profile"
+                  aria-label={`Profile${authedUser.email ? ` (${authedUser.email})` : ""}`}
+                  className="bee overflow-hidden"
+                >
+                  {authedUser.profilePictureUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={authedUser.profilePictureUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="text-xs font-medium text-primary-foreground" aria-hidden="true">
+                      {initialsFor(authedUser)}
+                    </span>
+                  )}
+                </Link>
+              ) : (
+                <Link href="/auth/signin" prefetch={false} aria-label="Sign in" className="bee">
+                  <UserIcon size={20} className="text-primary-foreground" />
+                </Link>
+              )}
             </div>
-            {/* WorkOS AuthKit auth slot — UserMenu reads `useAuth()` from AuthKitProvider */}
-            <UserMenu />
           </div>
         </nav>
       </header>
 
-      {/* Mobile bottom navigation — floating glass pill, 5 items with Shamwari center */}
+      {/* Mobile bottom navigation — floating glass pill, 4 items */}
+      {/* (Shamwari paused as a standalone destination — see FLAGS.shamwari_chat) */}
       {/* Detached from the edges (floats above the safe-area) so mobile browser */}
       {/* chrome never obscures it; stays put on scroll because it's fixed. */}
       {/* 48px min touch targets, 22px icons, 10px labels */}
@@ -183,19 +247,21 @@ export function Header() {
             <span className="text-[10px] leading-tight font-medium truncate max-w-[56px]">Explore</span>
             {isExplore && <span className="absolute bottom-1 h-0.5 w-5 rounded-full bg-primary" aria-hidden="true" />}
           </Link>
-          <Link
-            href="/shamwari"
-            prefetch={false}
-            className={`relative flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-xl transition-all min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] active:scale-95 ${
-              isShamwari ? "text-primary" : "text-text-tertiary hover:text-text-secondary"
-            }`}
-            aria-label="Shamwari AI assistant"
-            aria-current={isShamwari ? "page" : undefined}
-          >
-            <SparklesIcon size={22} />
-            <span className="text-[10px] leading-tight font-medium truncate max-w-[56px]">Shamwari</span>
-            {isShamwari && <span className="absolute bottom-1 h-0.5 w-5 rounded-full bg-primary" aria-hidden="true" />}
-          </Link>
+          {shamwariEnabled && (
+            <Link
+              href="/shamwari"
+              prefetch={false}
+              className={`relative flex flex-col items-center justify-center gap-0.5 px-2 py-2 rounded-xl transition-all min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] active:scale-95 ${
+                pathname === "/shamwari" ? "text-primary" : "text-text-tertiary hover:text-text-secondary"
+              }`}
+              aria-label="Shamwari AI assistant"
+              aria-current={pathname === "/shamwari" ? "page" : undefined}
+            >
+              <SparklesIcon size={22} />
+              <span className="text-[10px] leading-tight font-medium truncate max-w-[56px]">Shamwari</span>
+              {pathname === "/shamwari" && <span className="absolute bottom-1 h-0.5 w-5 rounded-full bg-primary" aria-hidden="true" />}
+            </Link>
+          )}
           <Link
             href="/history"
             prefetch={false}
