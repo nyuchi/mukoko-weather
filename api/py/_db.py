@@ -405,42 +405,11 @@ _known_activities_at: float = 0
 _ACTIVITIES_CACHE_TTL = 300  # 5 minutes
 
 
-def get_known_activities() -> set[str]:
-    """
-    Fetch the set of valid activity ids from MongoDB (cached 5 min).
-
-    Used to validate the client-supplied `activities` list before it's
-    spliced into any AI system prompt — without this, a caller could pass
-    an arbitrary string (of unbounded length) that lands directly in a
-    prompt as if it were a legitimate activity, more trusted than a user
-    turn. Falls back to a minimal hardcoded set if the database is
-    unavailable, mirroring get_known_tags().
-    """
-    global _known_activities, _known_activities_at
-
-    now = _time.time()
-    if _known_activities is not None and (now - _known_activities_at) < _ACTIVITIES_CACHE_TTL:
-        return _known_activities
-
-    try:
-        docs = list(activities_collection().find({}, {"id": 1, "_id": 0}))
-        _known_activities = {d["id"] for d in docs if d.get("id")}
-        _known_activities_at = now
-        return _known_activities
-    except Exception:
-        if _known_activities is not None:
-            return _known_activities
-        # Minimal fallback — matches a subset of the seed activities
-        return {
-            "crop-farming", "livestock", "mining", "construction", "driving",
-            "safari", "soccer", "braai",
-        }
-
-
 def filter_known_activities(activities: list[str]) -> list[str]:
     """
     Filter a client-supplied activities list down to known activity ids
-    before it's spliced into any AI system prompt.
+    (cached 5 min from MongoDB) before it's spliced into any AI system
+    prompt.
 
     Unlike `message`/`history` (length-capped) and location slugs
     (SLUG_RE-validated), each string in a request's `activities` list was
@@ -449,10 +418,27 @@ def filter_known_activities(activities: list[str]) -> list[str]:
     as if it were a legitimate activity, more trusted than a user turn.
     Unknown entries are silently dropped rather than rejected: legitimate
     callers only ever send ids from the app's own activity picker
-    (src/lib/activities.ts), so this never affects normal use.
+    (src/lib/activities.ts), so this never affects normal use. Falls back
+    to a minimal hardcoded set if the database is unavailable, mirroring
+    get_known_tags().
     """
-    known = get_known_activities()
-    return [a for a in activities if a in known]
+    global _known_activities, _known_activities_at
+
+    now = _time.time()
+    if _known_activities is None or (now - _known_activities_at) >= _ACTIVITIES_CACHE_TTL:
+        try:
+            docs = list(activities_collection().find({}, {"id": 1, "_id": 0}))
+            _known_activities = {d["id"] for d in docs if d.get("id")}
+            _known_activities_at = now
+        except Exception:
+            if _known_activities is None:
+                # Minimal fallback — matches a subset of the seed activities
+                _known_activities = {
+                    "crop-farming", "livestock", "mining", "construction",
+                    "driving", "safari", "soccer", "braai",
+                }
+
+    return [a for a in activities if a in _known_activities]
 
 
 def check_rate_limit(ip: str, action: str, max_requests: int, window_seconds: int) -> dict:

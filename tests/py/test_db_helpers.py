@@ -9,7 +9,6 @@ import pytest
 from py._db import (
     get_client_ip,
     check_rate_limit,
-    get_known_activities,
     filter_known_activities,
 )
 
@@ -111,12 +110,12 @@ class TestCheckRateLimit:
 
 
 # ---------------------------------------------------------------------------
-# get_known_activities / filter_known_activities — activity-id validation
-# before splicing user-supplied activities into AI prompts
+# filter_known_activities — validates user-supplied activities against known
+# ids (5-min cached DB lookup) before splicing them into any AI prompt
 # ---------------------------------------------------------------------------
 
 
-class TestGetKnownActivities:
+class TestFilterKnownActivities:
     def setup_method(self):
         # Reset the module-level cache so each test starts fresh.
         import py._db as db_mod
@@ -124,37 +123,10 @@ class TestGetKnownActivities:
         db_mod._known_activities_at = 0
 
     @patch("py._db.activities_collection")
-    def test_fetches_ids_from_db(self, mock_coll):
-        mock_coll.return_value.find.return_value = [
-            {"id": "crop-farming"}, {"id": "soccer"}, {"id": None},
-        ]
-        result = get_known_activities()
-        assert result == {"crop-farming", "soccer"}
-
-    def test_falls_back_when_db_unavailable(self):
-        with patch("py._db.activities_collection", side_effect=RuntimeError("no db")):
-            result = get_known_activities()
-        assert "mining" in result
-        assert "not-a-real-activity" not in result
-
-    @patch("py._db.activities_collection")
-    def test_caches_result_across_calls(self, mock_coll):
-        mock_coll.return_value.find.return_value = [{"id": "soccer"}]
-        first = get_known_activities()
-        mock_coll.return_value.find.return_value = [{"id": "different"}]
-        second = get_known_activities()
-        assert first == second == {"soccer"}
-
-
-class TestFilterKnownActivities:
-    def setup_method(self):
-        import py._db as db_mod
-        db_mod._known_activities = None
-        db_mod._known_activities_at = 0
-
-    @patch("py._db.activities_collection")
     def test_drops_unknown_activities(self, mock_coll):
-        mock_coll.return_value.find.return_value = [{"id": "soccer"}, {"id": "braai"}]
+        mock_coll.return_value.find.return_value = [
+            {"id": "soccer"}, {"id": "braai"}, {"id": None},
+        ]
         result = filter_known_activities(["soccer", "<script>evil</script>", "braai"])
         assert result == ["soccer", "braai"]
 
@@ -167,3 +139,16 @@ class TestFilterKnownActivities:
     def test_all_unknown_returns_empty(self, mock_coll):
         mock_coll.return_value.find.return_value = [{"id": "soccer"}]
         assert filter_known_activities(["fake-1", "fake-2"]) == []
+
+    def test_falls_back_when_db_unavailable(self):
+        with patch("py._db.activities_collection", side_effect=RuntimeError("no db")):
+            result = filter_known_activities(["mining", "not-a-real-activity"])
+        assert result == ["mining"]
+
+    @patch("py._db.activities_collection")
+    def test_caches_result_across_calls(self, mock_coll):
+        mock_coll.return_value.find.return_value = [{"id": "soccer"}]
+        first = filter_known_activities(["soccer", "different"])
+        mock_coll.return_value.find.return_value = [{"id": "different"}]
+        second = filter_known_activities(["soccer", "different"])
+        assert first == second == ["soccer"]
