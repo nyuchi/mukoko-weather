@@ -152,6 +152,7 @@ mukoko-weather/
 │   │   │   ├── dialog.tsx            # Dialog (Radix, portal, overlay, animations)
 │   │   │   ├── input.tsx             # Input (styled with CSS custom properties)
 │   │   │   ├── skeleton.tsx         # Skeleton, CardSkeleton, ChartSkeleton, BadgeSkeleton, MetricCardSkeleton, ChatSkeleton
+│   │   │   ├── spinner.tsx          # Spinner (shared loading ring — size/ring colors compose via className)
 │   │   │   ├── alert.tsx             # Alert, AlertTitle, AlertDescription (6 severity variants)
 │   │   │   ├── accordion.tsx        # Accordion (Radix, animated open/close)
 │   │   │   ├── section-header.tsx   # SectionHeader (title + optional action link/button)
@@ -929,7 +930,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 **Collections:**
 
 - `ai_prompts` — system prompts keyed by `promptKey` (e.g., `system:weather_summary`, `system:history_analysis`, `system:explore_search`, `system:report_clarification`, `greeting:location`, `greeting:explore`, `greeting:history`). Each document has: `promptKey`, `template` (with `{variable}` placeholders), `model`, `maxTokens`, `active`, `updatedAt`
-- `ai_suggested_rules` — dynamic suggested prompt rules. Each rule has: `ruleKey`, `condition` (weather field + operator + threshold), `prompt` (template with `{location}` placeholders), `category` (weather/activity/general), `priority`, `active`. Condition operators: `gt`, `gte`, `lt`, `lte`, `eq`, `in`. The `in` operator checks if any user-selected activity matches an array of activity IDs (source: `"activities"`) or if a weather value falls within an array (source: `"weather"` or `"hourly"`)
+- `ai_suggested_rules` — dynamic suggested prompt rules. Each rule has: `ruleKey`, `condition` (weather field + operator + threshold), `prompt` (template with `{location}` placeholders), `category` (weather/activity/general), `priority`, `active`, and optional `surface` (`"location"` default / `"explore"`). Condition operators: `gt`, `gte`, `lt`, `lte`, `eq`, `in`. The `in` operator checks if any user-selected activity matches an array of activity IDs (source: `"activities"`) or if a weather value falls within an array (source: `"weather"` or `"hourly"`). `surface: "explore"` rules are context-free chips (no `{placeholders}`, `condition: null`) consumed only by `getExplorePrompts()` for the standalone Shamwari chat's empty state — `generateSuggestedPrompts()` (location-page follow-ups) skips them, so the two surfaces can't cross-contaminate
 
 **Seed data:** `src/lib/seed-ai-prompts.ts` — seeded via `/api/db-init`
 
