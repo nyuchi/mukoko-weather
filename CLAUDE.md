@@ -548,7 +548,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/py/ai/followup` — POST, inline follow-up chat for AI summaries. Pre-seeded with the AI summary as conversation context. Max 5 exchanges then redirects to Shamwari. Rate-limited 30 req/hour/IP
 - `/api/py/ai/prompts` — GET, database-driven AI prompt library. Returns system prompts and suggested prompt rules
 - `/api/py/ai/suggested-rules` — GET, dynamic suggested prompt rules for contextual prompts
-- `/api/py/search` — GET, location search (text search, tag filter, geospatial nearest, pagination)
+- `/api/py/search` — GET, location search (text search, tag filter, geospatial nearest, pagination). Text search delegates to `search_locations_by_name()` in `api/py/_places_resolver.py` — the same helper the Shamwari chat tool's `search_locations` uses, so the two can't drift apart
 - `/api/py/geo` — GET, nearest location lookup (query: `lat`, `lon`, optional `autoCreate=true` for auto-creating community locations)
 - `/api/py/locations` — GET, list/filter locations from MongoDB (by slug, tag, or all; includes stats mode)
 - `/api/py/locations/add` — POST, add locations via search (`{ query }`) or coordinates (`{ lat, lon }`). Rate-limited to 5 creations/hour/IP
