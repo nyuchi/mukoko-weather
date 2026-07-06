@@ -583,10 +583,11 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 
 2. **Per-section error boundaries** — Every weather section in `WeatherDashboard.tsx` is wrapped in `ChartErrorBoundary`. If any one component crashes (e.g., chart render failure on low-memory mobile), only that section shows the fallback. Other sections keep working.
 
-3. **Page-level error boundaries** (last resort) — Only triggered if the entire page fails to render:
+3. **Page-level error boundaries** (last resort) — Only triggered if the entire page fails to render. All 8 route-level `error.tsx` files are thin wrappers around the shared `RouteErrorBoundary` (`src/components/layout/RouteErrorBoundary.tsx`) — each supplies only its copy (title/message/source/label); the retry tracking, analytics reporting, issue-report link, and JSX shell live once in the shared component:
    - `src/app/error.tsx` — global fallback ("Something went wrong")
-   - `src/app/[location]/error.tsx` — weather page fallback ("Weather Unavailable")
-   - `src/app/history/error.tsx` — history page fallback ("History Unavailable")
+   - `src/app/[location]/error.tsx` — weather page fallback ("Weather Unavailable", extra "View historical data" link)
+   - `src/app/history/error.tsx`, `src/app/shamwari/error.tsx`, `src/app/aviation/error.tsx` — per-page fallbacks
+   - `src/app/explore/country/**/error.tsx` (3 files) — lightweight variants (`retryTracking={false}`: plain retry, non-fatal analytics, no issue link)
    - Retry count is tracked in `sessionStorage` to prevent infinite reload loops (max 3 retries)
 
 4. **Inline degradation** — `WeatherUnavailableBanner` shown when all weather providers fail but the page still renders with seasonal estimates
