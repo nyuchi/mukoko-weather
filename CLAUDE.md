@@ -480,7 +480,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 
 **Resilience:** Module-level Anthropic client singletons with key-rotation detection (hash-based invalidation). Graceful degradation — AI endpoints return basic summaries when Anthropic is unavailable. Weather endpoints fall back through Tomorrow.io → Open-Meteo → seasonal estimates.
 
-**Input validation:** All endpoints validate slugs via `SLUG_RE` (`^[a-z0-9-]{1,80}$`), cap message lengths at 2000 chars (returns HTTP 400 on oversized), and limit history/activity arrays. Tags validated against `KNOWN_TAGS` allowlist.
+**Input validation:** All endpoints validate slugs via `SLUG_RE` (`^[a-z0-9-]{1,80}$`), cap message lengths at 2000 chars (returns HTTP 400 on oversized), and limit history/activity arrays. Tags validated against `KNOWN_TAGS` allowlist. The client-supplied `activities` list (user's selected activities, feeds personalized AI advice — e.g. "you selected soccer, here's how the forecast affects that") is validated via `get_known_activities()` / `filter_known_activities()` in `_db.py` (same 5-min-cached DB-lookup-with-fallback pattern as `get_known_tags()`) before being spliced into any system/user prompt in `_chat.py`, `_ai.py`, `_ai_followup.py`, and `_history_analyze.py` — unknown entries are silently dropped rather than rejected, since legitimate callers only ever send ids from `src/lib/activities.ts`'s activity picker.
 
 ### Circuit Breaker System (Python)
 

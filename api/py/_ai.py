@@ -18,7 +18,7 @@ import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ._db import get_db, get_api_key, get_client_ip, check_rate_limit
+from ._db import get_db, get_api_key, get_client_ip, check_rate_limit, filter_known_activities
 from ._circuit_breaker import anthropic_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
@@ -467,7 +467,9 @@ async def generate_summary(body: AISummaryRequest, request: Request = None):
     """
     weather_data = body.weatherData
     location = body.location
-    user_activities = body.activities
+    # Validate against known activity ids before it's spliced into the
+    # system prompt below (activities_line / tip).
+    user_activities = filter_known_activities(body.activities)
 
     if not weather_data or not location:
         raise HTTPException(status_code=400, detail="Missing weather data or location")

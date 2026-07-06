@@ -1195,7 +1195,8 @@ class TestGenerateSummary:
     @patch("py._ai._get_client")
     @patch("py._ai._get_cached_summary")
     @patch("py._ai.get_db")
-    async def test_activities_included_in_prompt(self, mock_db, mock_cache, mock_client,
+    @patch("py._ai.filter_known_activities", side_effect=lambda activities: activities)
+    async def test_activities_included_in_prompt(self, _mock_filter, mock_db, mock_cache, mock_client,
                                                   mock_season, mock_breaker, mock_sys_prompt,
                                                   mock_prompt, mock_set):
         """User activities should appear in the prompt sent to Claude."""
