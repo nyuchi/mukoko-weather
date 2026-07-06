@@ -1720,7 +1720,8 @@ Mukoko-weather sits on the shared **Nyuchi Platform cluster** (27 databases). Mu
 **`placesGeo` writes (Phase 0E):** `places.placesGeo` has its OWN validator that does NOT include a `bundu` field — calling `stamp_platform_fields` on it would fail. Use `api/py/_places_geo.upsert_placesgeo_city()` instead. The helper:
 
 - Builds the doc manually (no `bundu`), uses `_schemaVersion: "v3.2"`, and stamps `sourceProvenance.dataOrigin: "mukoko_user"`.
-- **Always dedupes first** via `find_nearby_placesgeo` — 5 km radius, normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country \_id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
+- **Always dedupes first** via `find_nearby_placesgeo` — `dedup_radius_km` radius (default 5 km; the mukoko location-creation flow passes its own 1 km duplicate-gate radius so the two checks can't disagree and alias a new fine-grained place onto a different same-named doc a few km away), normalised-name match (strips diacritics, road-type suffixes, leading house numbers), scoped by `parentPlaceId` (country \_id). If a match is found, the existing doc is returned with `wasExisting: True` — **no auto-suffixed slug is ever generated**.
+- **TOCTOU guard:** the dedup read + insert run under a short cross-instance creation lock (`weather.creation_locks`, `_id` = `placesgeo:{country}:{normalised name}`, 30s stale-steal) so two near-simultaneous requests for the same brand-new place can't both slip past the dedup read and double-insert.
 - Slugs are `<slugified-name>-<6-char hex>` (e.g. `harare-a1b2c3`). Suffixing with `-2`, `-3`, … is forbidden — slug collisions in `weather.locations` now raise `SlugCollisionError` and surface the existing record as a `mode: "duplicate"` response.
 
 **Fundi search-miss queue (Phase 0E — disabled in Phase 0F):** Previously mukoko ALSO enqueued a POI seed request via `_places_geo.enqueue_fundi_seed()` so the Fundi worker would populate `places.places`. Phase 0F removes this call — POI enrichment is a separate optional concern and is not P0 for mukoko-weather. Re-enable behind a flag like `MUKOKO_ENRICH_POIS_VIA_FUNDI` once the POI surface is actually consumed.
@@ -1761,9 +1762,9 @@ Resolution chain for `/harare`:
 
 `src/lib/db.ts → getLocationFromDb(slug)` now delegates straight to `resolveLocationSlug` and packages the response as a `LocationDoc`, so every existing caller (`src/app/[location]/*` server components, sitemap, etc.) keeps working with no changes.
 
-**Create-on-demand:** When a user lands on `/<unknown-slug>` AND the request has lat/lon (IP geo header or GPS), `POST /api/py/locations/add` runs `_reverse_geocode → upsert_placesgeo_city(...)` (Phase 0E helper) which:
+**Create-on-demand:** When a user lands on `/<unknown-slug>` AND the request has lat/lon (IP geo header or GPS), `POST /api/py/locations/add` runs the shared `_create_location_from_coords()` helper (`api/py/_locations.py` — the single reverse-geocode → POI check → dedupe → slug/elevation/province → placesGeo-upsert sequence also used by `GET /api/py/geo?autoCreate=true`, so the two creation paths can't drift), which calls `upsert_placesgeo_city(...)` (Phase 0E helper). The upsert:
 
-- Dedupes via `find_nearby_placesgeo` (5 km radius, normalised-name match, country-scoped) and patches the existing doc with the new `mukokoSlug` / `mukokoTags` / `mukokoNominatimAddress` when it finds one
+- Dedupes via `find_nearby_placesgeo` (1 km radius — the same `DEDUP_RADIUS_KM` as the caller's duplicate gate — normalised-name match, country-scoped) and patches the existing doc with the new `mukokoSlug` / `mukokoTags` / `mukokoNominatimAddress` when it finds one
 - Otherwise inserts a fresh placesGeo doc with `sourceProvenance.dataOrigin: "mukoko_user"` plus the mukoko-side metadata stamped into `sourceProvenance.mukoko*`
 - Returns `{ placesGeoId, placesGeoSlug, location }` so the caller can redirect
 
