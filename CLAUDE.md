@@ -236,6 +236,8 @@ mukoko-weather/
 │   │   │   ├── AISummaryChat.test.ts
 │   │   │   ├── HistoryAnalysis.tsx   # AI-powered historical weather analysis (button-triggered)
 │   │   │   ├── HistoryAnalysis.test.ts
+│   │   │   ├── ShamwariCTA.tsx        # Shared "continue in Shamwari" link (feature-flag gate + context handoff)
+│   │   │   ├── ShamwariCTA.test.ts
 │   │   │   ├── ActivityInsights.tsx   # Category-specific weather insight cards
 │   │   │   ├── reports/               # Waze-style community weather reporting
 │   │   │   │   ├── WeatherReportModal.tsx   # 3-step wizard: select type → AI clarify → confirm
@@ -906,7 +908,8 @@ All skeletons include `role="status"` and `aria-label="Loading"` for screen read
 - Rendered with `react-markdown` inside Tailwind `prose` classes
 - Cached in MongoDB with tiered TTL (30/60/120 min by location tier)
 - If `ANTHROPIC_API_KEY` is unset, a basic weather summary fallback is generated
-- **Inline follow-up chat:** `AISummary` fires `onSummaryLoaded(text)` callback; `WeatherDashboard` passes the summary to `AISummaryChat` which allows up to 5 follow-up messages before redirecting to Shamwari
+- **Inline follow-up chat:** `AISummary` fires `onSummaryLoaded(text)` callback; `WeatherDashboard` passes the summary to `AISummaryChat` which allows up to 5 follow-up messages before rendering the shared `ShamwariCTA` (`source: "location"`) to redirect to Shamwari
+- **Shared Shamwari handoff:** `src/components/weather/ShamwariCTA.tsx` centralizes the `FLAGS.shamwari_chat` gate + `setShamwariContext` call + styled `/shamwari` link that `AISummaryChat`, `HistoryAnalysis`, and `ExploreSearch` all render — previously each hand-rolled its own copy of this logic. Renders `null` while the flag is off. Exposes 4 visual variants (`tanzanite`, `primary`, `subtle`, `text`) matching each call site's prior styling
 - **Ask Shamwari link:** AISummary includes a "Ask Shamwari about this" link that sets `ShamwariContext` with the current location/weather/summary before navigating to `/shamwari`
 
 ### AI Prompt Library (Database-Driven)
@@ -1018,7 +1021,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 - **Route:** `/history` — client-side dashboard for exploring recorded weather data
 - **Components:** `src/app/history/page.tsx` (server, metadata) + `src/app/history/HistoryDashboard.tsx` (client)
 - **Features:** location search, configurable time period (7d–1y), comprehensive charts, summary statistics, daily records table, and AI-powered analysis
-- **AI analysis:** `src/components/weather/HistoryAnalysis.tsx` — button-triggered analysis ("Analyze with Shamwari"). Server-side aggregation computes compact stats (~800 tokens) from raw records, sends to Claude for trend/pattern analysis. Results rendered as markdown with tanzanite border. "Discuss in Shamwari" link carries analysis context via `ShamwariContext`. Cached 1h server-side
+- **AI analysis:** `src/components/weather/HistoryAnalysis.tsx` — button-triggered analysis ("Analyze with Shamwari"). Server-side aggregation computes compact stats (~800 tokens) from raw records, sends to Claude for trend/pattern analysis. Results rendered as markdown with tanzanite border. Renders the shared `ShamwariCTA` (`source: "history"` + `historyDays` + `historyAnalysis`) as its "Discuss in Shamwari" link. Cached 1h server-side
 - **Data source:** `GET /api/history?location=<slug>&days=<n>` backed by MongoDB `weather_history` collection
 - **Charts:** Reusable chart components from `src/components/weather/charts/` (Canvas 2D via Chart.js)
 
@@ -1218,7 +1221,7 @@ All pages use a **TikTok-style sequential mounting** pattern — only ONE sectio
 **Components:**
 
 - `src/app/explore/page.tsx` — server component (ISR 1h), fetches tag counts and featured tags, renders AI search + Shamwari CTA card + category browse grid + country browse link
-- `src/components/explore/ExploreSearch.tsx` — client component with two layers: (1) **instant quick matches** — the same debounced (300ms) fast name/tag search used by `MyWeatherModal`'s location picker (`GET /api/py/search?q=...&limit=6`, `AbortController`-cancelled on rapid typing), shown live as the user types, as plain location links; (2) **AI search** — natural-language query (e.g., "farming areas with low frost risk"), submitted explicitly, results render as location cards with inline weather data. This keeps the quick-match experience consistent everywhere in the app search is offered, while AI search remains an additional, deliberate step. "Ask Shamwari for more" link sets `ShamwariContext` with `source: "explore"` + `exploreQuery` (gated behind the `shamwari_chat` feature flag)
+- `src/components/explore/ExploreSearch.tsx` — client component with two layers: (1) **instant quick matches** — the same debounced (300ms) fast name/tag search used by `MyWeatherModal`'s location picker (`GET /api/py/search?q=...&limit=6`, `AbortController`-cancelled on rapid typing), shown live as the user types, as plain location links; (2) **AI search** — natural-language query (e.g., "farming areas with low frost risk"), submitted explicitly, results render as location cards with inline weather data. This keeps the quick-match experience consistent everywhere in the app search is offered, while AI search remains an additional, deliberate step. Renders the shared `ShamwariCTA` (`source: "explore"` + `exploreQuery`) as its "Ask Shamwari for more" link
 - **API:** `GET /api/py/search` — fast literal name/tag/geo text search (same endpoint as `MyWeatherModal`'s saved-locations search). `POST /api/py/explore/search` — uses Claude with `search_locations` + `get_weather` tools for natural-language queries. Falls back to text search if AI unavailable. Rate-limited 15 req/hour/IP
 
 **Sub-routes:**
@@ -1370,6 +1373,7 @@ _Page/component tests:_
 - `src/components/weather/SupportBanner.test.ts` — BMC support card structure, accessibility, error isolation, no hardcoded styles
 - `src/components/weather/AISummaryChat.test.ts` — inline follow-up chat structure, max message cap, accessibility
 - `src/components/weather/HistoryAnalysis.test.ts` — analysis structure, endpoint, request body, ShamwariContext, accessibility
+- `src/components/weather/ShamwariCTA.test.ts` — shared Shamwari handoff link: feature-flag gate, context handoff, variants
 - `src/components/weather/SavedLocationsModal.test.ts` — modal structure, icons, search, geolocation, loading skeleton, capacity management, accessibility
 - `src/components/weather/WeatherLoadingScene.test.ts` — KNOWN_ROUTES guard, reduced-motion support, Three.js integration, slug display, accessibility
 - `src/components/weather/reports/WeatherReportModal.test.ts` — 3-step wizard, report types, severity, accessibility
