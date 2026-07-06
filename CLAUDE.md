@@ -1436,7 +1436,9 @@ Repeated Tailwind chains (3+ uses) are extracted into named component classes in
 | Class            | Purpose                                    | Replaces                                                                                    |
 | ---------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | `.kudu`          | Primary pill button (filled, brand colour) | `rounded-button bg-primary px-5 py-3 ...`                                                   |
+| `.kudu-sm`       | Smaller primary pill (compact toolbars)    | `rounded-button bg-primary px-5 py-2.5 ...` + `min-h-[var(--touch-target-min)]`             |
 | `.impala`        | Secondary/outline pill button              | `border border-border bg-transparent px-5 py-3 ...`                                         |
+| `.impala-sm`     | Smaller outline pill (compact toolbars)    | `border border-border bg-transparent px-5 py-2.5 ...` + `min-h-[var(--touch-target-min)]`   |
 | `.bee`           | Round icon button (mukoko = beehive)       | `w-[var(--touch-target-min)] h-[var(--touch-target-min)] rounded-full bg-background/10 ...` |
 | `.baobab`        | Primary card surface                       | `rounded-card border border-primary/25 bg-surface-card p-4 shadow-sm`                       |
 | `.acacia`        | Quieter card surface                       | `rounded-card border border-border bg-surface-card p-4`                                     |
