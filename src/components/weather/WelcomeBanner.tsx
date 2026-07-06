@@ -55,7 +55,7 @@ export function WelcomeBanner({
             <button
               type="button"
               onClick={() => { onChangeLocation(); trackEvent("onboarding_completed", { method: "personalize" }); }}
-              className="press-scale inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-base font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-md min-h-[var(--touch-target-min)]"
+              className="kudu-sm"
             >
               <MapPinIcon size={14} />
               Personalise
