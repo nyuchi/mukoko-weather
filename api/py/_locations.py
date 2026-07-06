@@ -839,8 +839,10 @@ def _enrich_location_with_ai(country_code: str, lat: float, lon: float) -> None:
     """
     import threading
 
-    # Country code only — user coordinates are private and must not be logged.
-    logger.info("Starting AI location enrichment for %s", country_code)
+    # Deliberately log no request-derived values: everything here (country,
+    # coords, name) traces back to the user's GPS position, which must not
+    # land in logs (CodeQL: clear-text logging of private data).
+    logger.info("Starting AI location enrichment")
 
     def _run() -> None:
         try:
