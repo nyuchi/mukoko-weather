@@ -701,10 +701,9 @@ def _create_location_from_coords(lat: float, lon: float, *, source: str) -> dict
         places_geo_id = placesgeo_doc.get("_id")
         places_geo_slug = placesgeo_doc.get("slug")
         if not placesgeo_doc.get("wasExisting"):
-            logger.info(
-                "Created placesGeo entry %s for %s (%s)",
-                places_geo_id, geocoded["name"], source,
-            )
+            # Log only the opaque UUID — the reverse-geocoded name at zoom 18
+            # can be a user's street address, which must not land in logs.
+            logger.info("Created placesGeo entry %s (%s)", places_geo_id, source)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Platform placesGeo write failed (%s): %s", source, exc)
 
@@ -840,7 +839,8 @@ def _enrich_location_with_ai(country_code: str, lat: float, lon: float) -> None:
     """
     import threading
 
-    logger.info("Starting AI location enrichment for %s (%.1f, %.1f)", country_code, lat, lon)
+    # Country code only — user coordinates are private and must not be logged.
+    logger.info("Starting AI location enrichment for %s", country_code)
 
     def _run() -> None:
         try:
