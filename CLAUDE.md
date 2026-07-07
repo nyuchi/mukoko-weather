@@ -63,7 +63,7 @@ mukoko-weather/
 │   ├── app/                          # Next.js App Router
 │   │   ├── layout.tsx                # Root layout, metadata, JSON-LD schemas
 │   │   ├── page.tsx                  # Home — server: resolves lastLocation cookie / IP-geo, hands off to HomeLanding
-│   │   ├── HomeLanding.tsx           # Client: GPS-first landing (auto-GPS first visit, silent travel recheck for returning visitors)
+│   │   ├── HomeLanding.tsx           # Client: GPS-first landing (auto-GPS first visit; returning visitors' redirect GATED on a current-location recheck — current location precedes saved)
 │   │   ├── HomeLanding.test.ts       # HomeLanding + page.tsx + proxy.ts tests (structure, travel recheck, edge routing)
 │   │   ├── globals.css               # Brand System v6 CSS custom properties
 │   │   ├── loading.tsx               # Root loading skeleton
@@ -211,7 +211,11 @@ mukoko-weather/
 │   │   │   ├── Breadcrumb.test.ts
 │   │   │   └── Footer.tsx            # Footer with site stats, copyright, links, Ubuntu philosophy
 │   │   ├── weather/
-│   │   │   ├── CurrentConditions.tsx  # Large temp display, feels-like, daily high/low
+│   │   │   ├── CurrentConditions.tsx  # De-carded hero: large temp display, feels-like, daily high/low — reads directly over WeatherBackdrop
+│   │   │   ├── WeatherBackdrop.tsx    # Fixed full-viewport condition-aware Three.js sky behind the whole location page (Apple Weather style)
+│   │   │   ├── WeatherBackdrop.test.ts
+│   │   │   ├── HourlyScrollCards.tsx  # Horizontal hour-by-hour strip + deterministic one-sentence outlook (hourly-summary.ts)
+│   │   │   ├── HourlyScrollCards.test.ts
 │   │   │   ├── HourlyForecast.tsx     # 24-hour hourly forecast
 │   │   │   ├── HourlyChart.tsx        # Canvas chart: temperature + rain over 24h
 │   │   │   ├── DailyForecast.tsx      # 7-day forecast cards
@@ -309,6 +313,8 @@ mukoko-weather/
 │   │   ├── suitability-cache.test.ts # Suitability cache tests
 │   │   ├── weather.ts             # Open-Meteo client, frost detection, weather utils, synthesizeOpenMeteoInsights
 │   │   ├── weather.test.ts
+│   │   ├── hourly-summary.ts      # Deterministic one-sentence hourly outlook (Apple-style, no AI): first condition-group change + peak gusts
+│   │   ├── hourly-summary.test.ts
 │   │   ├── weather-labels.ts      # Contextual label helpers (humidityLabel, pressureLabel, cloudLabel, feelsLikeContext)
 │   │   ├── weather-labels.test.ts
 │   │   ├── api-keys.ts            # Developer API keys — mk_live_ generation (CSPRNG), SHA-256 hashing, masking, owner-scoped CRUD in platform.apiKeys
@@ -556,7 +562,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 
 **Sub-route back-navigation:** `/[location]/atmosphere`, `/[location]/forecast`, and `/[location]/map` all render the shared `Breadcrumb` component (`src/components/layout/Breadcrumb.tsx` — `Home / {location.name} / {current page}`) instead of each hand-rolling its own trail. `/[location]/map` previously used a floating "← Back to weather" pill overlay on the map; it now uses the same breadcrumb bar as the other two sub-routes for a consistent back-navigation pattern across all three.
 
-- `/` — GPS-first landing via `HomeLanding` (see "HomeLanding (Smart Home Page)" below): first-time visitors get a full auto-GPS prompt; returning visitors see their cached location immediately with a silent background GPS recheck for travel detection
+- `/` — GPS-first landing via `HomeLanding` (see "HomeLanding (Smart Home Page)" below): first-time visitors get a full auto-GPS prompt; returning visitors see their cached location's countdown immediately, but the redirect is gated on a current-location GPS recheck — current location always takes precedence over the saved one
 - `/[location]` — dynamic weather pages — overview: current conditions, AI summary, activity insights, atmospheric metric cards
 - `/[location]/atmosphere` — 24-hour atmospheric detail charts (humidity, wind, pressure, UV) for a location
 - `/[location]/forecast` — hourly (24h) + daily (7-day) forecast charts + sunrise/sunset for a location
@@ -1169,10 +1175,10 @@ The home page (`/`) is a server/client split, designed around one hard constrain
 - `src/app/page.tsx` — server component. Resolves the `lastLocation` cookie to a real `WeatherLocation` via `getLocationFromDb()` (only trusts a slug that both looks valid AND actually resolves — an unresolvable/deleted slug falls through to fresh detection instead of looping). If resolved, passes it to `HomeLanding` as `detectedLocation` with `isReturningUser={true}`. Otherwise falls back to server-side IP geo (Vercel's `x-vercel-ip-latitude`/`longitude` headers, find-only, `autoCreate=false`) as a rough hint for first-time visitors.
 - `src/app/HomeLanding.tsx` — client component, GPS-first pipeline (mirrors Apple/Google Weather):
   1. **First-time visitor** (`isReturningUser` false, no prior local state) → auto-triggers full browser GPS on mount (`detectUserLocation({ autoCreate: true })`), showing "Finding your location…" while it runs. Success/created → redirect there. Denied/unavailable/error → fall back to the IP-geo countdown if present, else the city chooser. A one-time `mukoko-gps-autoprompted` localStorage flag (independent of Zustand) ensures this only ever runs once per visitor.
-  2. **Returning visitor** (cached `lastLocation`) → shows that location's "Taking you to {city}…" countdown **immediately**, no wait. Concurrently, a **silent travel recheck** runs in the background: a fast-timeout (3s), cache-friendly (5 min `maximumAge`) GPS check via the same `detectUserLocation()`, now accepting optional `timeoutMs`/`maximumAgeMs` overrides. If it resolves to a _different_ location before the countdown fires, the redirect target swaps to the new city — the traveling case. GPS denial, failure, timeout, or a match with the cached location leaves the countdown completely untouched, so the common (non-traveling) case has zero added latency or friction.
+  2. **Returning visitor** (cached `lastLocation`) → shows that location's "Taking you to {city}…" countdown **immediately** — but the redirect is **gated on a current-location recheck settling** (`recheckSettled`): **current location takes precedence over saved locations** (the Apple Weather rule), so the cached city can never win a race against a GPS check that is still running. The recheck is a fast-timeout (4s), cache-friendly (5 min `maximumAge`) GPS check via `detectUserLocation()`; an absolute 8s settle cap (`RECHECK_SETTLE_CAP_MS`) guarantees the redirect never hangs. GPS resolving somewhere new swaps the redirect target; when the nearest KNOWN location is > 25 km from the fix (`FAR_NEAREST_KM` — rural travel), a create-on-demand lookup (`autoCreate: true`) resolves the user's actual place instead of a far-away catalog entry. Denial/failure/timeout lets the cached location proceed.
   3. "Use my current location" button / "Browse all locations" link — unchanged manual escape hatches.
 
-**Why this fixes the "stuck on my home city while traveling" bug:** previously, both the edge middleware and the server page instantly redirected any returning visitor straight to their cached `lastLocation` cookie, and the client-side auto-GPS effect explicitly skipped re-running for anyone who'd already onboarded — so GPS was only ever consulted on a visitor's very first-ever visit. A user who onboarded in Harare and later opened the app in Cape Town would land straight back on Harare's weather. The silent recheck above restores GPS as the authority on every app open, without sacrificing the instant feel of the common case.
+**Why this fixes the "stuck on my home city while traveling" bug:** previously, both the edge middleware and the server page instantly redirected any returning visitor straight to their cached `lastLocation` cookie, and the client-side auto-GPS effect explicitly skipped re-running for anyone who'd already onboarded — so GPS was only ever consulted on a visitor's very first-ever visit. A user who onboarded in Harare and later opened the app in Cape Town would land straight back on Harare's weather. The gated recheck above makes GPS the authority on every app open — the redirect waits for it to settle rather than racing it.
 
 ### Lazy Loading & Mobile Performance (TikTok-Style)
 
@@ -1397,7 +1403,7 @@ _Python backend tests (pytest):_
 _Page/component tests:_
 
 - `src/app/seo.test.ts` — metadata generation, schema validation, canonical URL coverage (layout bleed guard, per-page canonical presence)
-- `src/app/HomeLanding.test.ts` — HomeLanding structure, auto-GPS on first visit, silent travel recheck for returning visitors, page.tsx server logic, proxy.ts edge routing
+- `src/app/HomeLanding.test.ts` — HomeLanding structure, auto-GPS on first visit, gated current-location recheck (settle cap, far-nearest escalation), page.tsx server logic, proxy.ts edge routing
 - `src/app/explore/explore.test.ts` — explore page tests (browse-only, Shamwari CTA link)
 - `src/app/shamwari/shamwari.test.ts` — Shamwari page structure, full-viewport layout, loading skeleton
 - `src/app/[location]/FrostAlertBanner.test.ts` — banner rendering, severity styling
