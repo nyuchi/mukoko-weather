@@ -51,11 +51,17 @@ export async function registerStation(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? `Registration failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(
+      (await res.json().catch(() => null))?.detail ??
+        `Registration failed (${res.status})`,
+    );
   return res.json();
 }
 
-export async function fetchStatus(station: RegisteredStation): Promise<StationStatus> {
+export async function fetchStatus(
+  station: RegisteredStation,
+): Promise<StationStatus> {
   const res = await fetch(
     `${API_BASE}/api/py/stations/status?id=${encodeURIComponent(station.stationId)}&key=${encodeURIComponent(station.key)}`,
   );
@@ -70,8 +76,16 @@ export async function submitManualReading(
   const res = await fetch(`${API_BASE}/api/py/stations/manual`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stationId: station.stationId, key: station.key, ...reading }),
+    body: JSON.stringify({
+      stationId: station.stationId,
+      key: station.key,
+      ...reading,
+    }),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? `Submit failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(
+      (await res.json().catch(() => null))?.detail ??
+        `Submit failed (${res.status})`,
+    );
   return res.json();
 }

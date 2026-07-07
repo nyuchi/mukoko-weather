@@ -8,10 +8,5 @@ import { Console } from "@/components/Console";
  */
 export default async function Home() {
   const { user } = await withAuth({ ensureSignedIn: true });
-  return (
-    <Console
-      userEmail={user.email ?? ""}
-      userId={user.id}
-    />
-  );
+  return <Console userEmail={user.email ?? ""} userId={user.id} />;
 }
