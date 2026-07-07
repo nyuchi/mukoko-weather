@@ -25,6 +25,7 @@ conditions for every visitor within 50 km.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 import secrets
 from datetime import datetime, timezone
@@ -61,19 +62,35 @@ QC_RANGES = {
 }
 
 
-def _hash_key(key: str) -> str:
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+# Ingest keys are 192-bit random tokens (secrets.token_urlsafe(24)), not
+# human passwords — but they're still stored only as salted PBKDF2-HMAC-SHA256
+# hashes. Iterations are modest because the input is high-entropy (a slow KDF
+# guards low-entropy passwords; here it just bounds per-ingest CPU, and
+# stations report every 16-60s).
+_KDF_ITERATIONS = 60_000
+
+
+def _hash_key(key: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256", key.encode("utf-8"), salt.encode("utf-8"), _KDF_ITERATIONS
+    ).hex()
 
 
 def _find_station(station_id: str, key: str) -> dict | None:
-    """Resolve a station by id + ingest key (hash compared). None on any miss."""
+    """Resolve a station by id + ingest key (salted KDF compared). None on any miss."""
     if not station_id or not key or not STATION_ID_RE.match(station_id):
         return None
     try:
         doc = stations_collection().find_one({"stationId": station_id})
     except Exception:
         return None
-    if not doc or doc.get("ingestKeyHash") != _hash_key(key):
+    if not doc:
+        return None
+    salt = doc.get("ingestKeySalt") or ""
+    expected = doc.get("ingestKeyHash") or ""
+    if not salt or not expected:
+        return None
+    if not hmac.compare_digest(_hash_key(key, salt), expected):
         return None
     return doc
 
@@ -191,6 +208,7 @@ async def register_station(body: StationRegisterRequest, request: Request = None
 
     station_id = f"mws-{secrets.token_hex(4)}"
     ingest_key = secrets.token_urlsafe(24)
+    ingest_salt = secrets.token_hex(16)
 
     doc = stamp_platform_fields(
         {
@@ -203,7 +221,8 @@ async def register_station(body: StationRegisterRequest, request: Request = None
             "stationType": body.stationType,
             "hardware": (body.hardware or "").strip() or None,
             "status": "active",
-            "ingestKeyHash": _hash_key(ingest_key),
+            "ingestKeyHash": _hash_key(ingest_key, ingest_salt),
+            "ingestKeySalt": ingest_salt,
             "lastObservationAt": None,
         },
         country_code=(body.country or "ZW").upper(),

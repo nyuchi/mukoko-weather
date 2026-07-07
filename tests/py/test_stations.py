@@ -80,7 +80,8 @@ class TestFindStation:
     def test_matches_hashed_key(self, mock_coll):
         mock_coll.return_value.find_one.return_value = {
             "stationId": "mws-abcd1234",
-            "ingestKeyHash": _hash_key("secret"),
+            "ingestKeySalt": "aa" * 16,
+            "ingestKeyHash": _hash_key("secret", "aa" * 16),
         }
         assert _find_station("mws-abcd1234", "secret") is not None
 
@@ -88,9 +89,15 @@ class TestFindStation:
     def test_rejects_wrong_key(self, mock_coll):
         mock_coll.return_value.find_one.return_value = {
             "stationId": "mws-abcd1234",
-            "ingestKeyHash": _hash_key("secret"),
+            "ingestKeySalt": "aa" * 16,
+            "ingestKeyHash": _hash_key("secret", "aa" * 16),
         }
         assert _find_station("mws-abcd1234", "wrong") is None
+
+    @patch("py._stations.stations_collection")
+    def test_rejects_doc_missing_salt_or_hash(self, mock_coll):
+        mock_coll.return_value.find_one.return_value = {"stationId": "mws-abcd1234"}
+        assert _find_station("mws-abcd1234", "secret") is None
 
     def test_rejects_malformed_station_id(self):
         assert _find_station("not-a-station", "key") is None
@@ -130,8 +137,8 @@ class TestRegister:
         assert result["stationId"].startswith("mws-")
         assert len(result["ingestKey"]) >= 24
         inserted = mock_coll.return_value.insert_one.call_args[0][0]
-        # Only the SHA-256 hash is persisted — never the raw key
-        assert inserted["ingestKeyHash"] == _hash_key(result["ingestKey"])
+        # Only the salted PBKDF2 hash is persisted — never the raw key
+        assert inserted["ingestKeyHash"] == _hash_key(result["ingestKey"], inserted["ingestKeySalt"])
         assert result["ingestKey"] not in str({k: v for k, v in inserted.items() if k != "ingestKeyHash"})
         # GeoJSON point for the 2dsphere blend query
         assert inserted["location"] == {"type": "Point", "coordinates": [31.0, -17.8]}
@@ -158,7 +165,8 @@ class TestRegister:
 def _station_doc():
     return {
         "stationId": "mws-abcd1234",
-        "ingestKeyHash": _hash_key("secret"),
+        "ingestKeySalt": "aa" * 16,
+        "ingestKeyHash": _hash_key("secret", "aa" * 16),
         "location": {"type": "Point", "coordinates": [31.0, -17.8]},
         "bundu": {"countryCode": "ZW"},
     }
