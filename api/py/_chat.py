@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -31,16 +30,22 @@ from ._db import (
     get_client_ip,
     get_api_key,
     get_known_tags,
+    filter_known_activities,
+    get_activities_brief,
     weather_cache_collection,
     activities_collection,
     suitability_rules_collection,
     ai_prompts_collection,
+    SLUG_RE,
+    MAX_HISTORY,
+    MAX_MESSAGE_LEN,
 )
 from ._places_resolver import (
     find_all_locations,
     find_location,
     find_locations_by_tag,
     count_all_locations,
+    search_locations_by_name,
 )
 from ._circuit_breaker import anthropic_breaker, CircuitOpenError
 
@@ -50,9 +55,6 @@ router = APIRouter()
 # Constants
 # ---------------------------------------------------------------------------
 
-SLUG_RE = re.compile(r"^[a-z0-9-]{1,80}$")
-MAX_HISTORY = 10
-MAX_MESSAGE_LEN = 2000
 MAX_ACTIVITIES = 20  # user-selected activities from client
 MAX_TOOL_ITERATIONS = 5
 TOOL_TIMEOUT_S = 15  # applied to each tool execution via asyncio.wait_for
@@ -79,9 +81,8 @@ _location_count: Optional[str] = None  # cached alongside locations
 _location_context_at: float = 0
 CONTEXT_TTL = 300  # 5 minutes
 
-# Activities cache (5-min TTL)
-_activities_cache: Optional[list[dict]] = None
-_activities_cache_at: float = 0
+# Activities are cached in _db.get_activities_brief() (5-min TTL) — shared
+# with the AI summary prompt so both surfaces read the same guidance.
 
 
 def _get_anthropic_client() -> anthropic.Anthropic:
@@ -137,24 +138,8 @@ def _get_location_context() -> tuple[list[dict], str]:
 
 
 def _get_activities_list() -> list[dict]:
-    """Cached list of activities for the system prompt."""
-    global _activities_cache, _activities_cache_at
-
-    now = time.time()
-    if _activities_cache and (now - _activities_cache_at) < CONTEXT_TTL:
-        return _activities_cache
-
-    try:
-        docs = list(
-            activities_collection()
-            .find({}, {"id": 1, "label": 1, "category": 1, "_id": 0})
-            .sort([("category", 1), ("label", 1)])
-        )
-        _activities_cache = docs
-        _activities_cache_at = now
-        return docs
-    except Exception:
-        return _activities_cache or []
+    """Cached list of activities for the system prompt (shared _db cache)."""
+    return get_activities_brief()
 
 
 # ---------------------------------------------------------------------------
@@ -231,24 +216,11 @@ TOOLS = [
 
 
 def _execute_search_locations(query: str) -> dict:
-    """Search placesGeo by name/slug via case-insensitive regex (Phase 0G).
-
-    Atlas Search and ``$text`` indexes lived on ``weather.locations``, which
-    is being dropped. Until equivalent indexes are provisioned on
-    ``places.placesGeo``, we fall back to a regex name match scoped to
-    cities/towns/villages.
-    """
-    q = query.strip()[:200]
-    if not q:
-        return {"locations": [], "total": 0}
-
-    from ._db import places_geo_collection
-    from ._places_resolver import adapt_placesgeo_to_location
-
-    def _format(docs: list) -> dict:
-        adapted = [
-            adapt_placesgeo_to_location(d) for d in docs
-        ]
+    """Search placesGeo by name/slug via the shared regex search helper —
+    same query shape as GET /api/py/search's text-search branch, so the
+    two can't silently drift apart."""
+    try:
+        adapted = search_locations_by_name(query, limit=10)
         return {
             "locations": [
                 {
@@ -258,29 +230,10 @@ def _execute_search_locations(query: str) -> dict:
                     "tags": r.get("tags", []),
                 }
                 for r in adapted
-                if r and r.get("slug")
+                if r.get("slug")
             ],
             "total": len(adapted),
         }
-
-    try:
-        regex = {"$regex": re.escape(q), "$options": "i"}
-        # Search name + mukokoSlug + platform slug; scope to consumer-facing
-        # geoTypes so we never return a country/province as a "location".
-        results = list(
-            places_geo_collection()
-            .find({
-                "geoType": {"$in": ["city", "town", "village"]},
-                "$or": [
-                    {"name": regex},
-                    {"slug": regex},
-                    {"sourceProvenance.mukokoSlug": regex},
-                ],
-            })
-            .limit(10)
-            .max_time_ms(3000)
-        )
-        return _format(results)
     except Exception:
         return {"locations": [], "total": 0, "error": "Search unavailable"}
 
@@ -612,10 +565,26 @@ def _build_chat_system_prompt(user_activities: list[str]) -> str:
 
     user_activity_section = ""
     if user_activities:
+        # Per-activity guidance (database-driven aiInstructions) keeps advice
+        # grounded in what actually matters for each activity — and always
+        # anchored to the location's country, not generic global filler.
+        briefs = {a.get("id"): a for a in activities}
+        guidance_lines = [
+            f"- {briefs[a].get('label') or a}: {briefs[a]['aiInstructions']}"
+            for a in user_activities
+            if a in briefs and briefs[a].get("aiInstructions")
+        ]
+        guidance_block = (
+            "\nActivity guidance (follow strictly, adapted to the location's country and season):\n"
+            + "\n".join(guidance_lines)
+            if guidance_lines
+            else ""
+        )
         user_activity_section = (
             f"\nThe user has selected these activities as their interests: {', '.join(user_activities)}.\n"
             "When providing weather advice, prioritize information relevant to these activities.\n"
             "Use the get_activity_advice tool to get structured suitability ratings."
+            f"{guidance_block}"
         )
 
     def _apply_template(template: str) -> str:
@@ -699,8 +668,10 @@ async def chat(body: ChatRequest, request: Request):
         for m in body.history[:MAX_HISTORY]
     ]
 
-    # Cap activities
-    user_activities = body.activities[:MAX_ACTIVITIES]
+    # Validate against known activity ids, then cap — filter_known_activities
+    # prevents an arbitrary client-supplied string from landing unvalidated
+    # in the system prompt (see _build_chat_system_prompt).
+    user_activities = filter_known_activities(body.activities)[:MAX_ACTIVITIES]
 
     # Build messages for Claude
     messages = []

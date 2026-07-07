@@ -15,10 +15,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import anthropic
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ._db import get_db, get_api_key
+from ._db import get_db, get_api_key, get_client_ip, check_rate_limit, filter_known_activities, get_activities_brief, require_internal_caller
 from ._circuit_breaker import anthropic_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
@@ -458,19 +458,36 @@ class AISummaryRequest(BaseModel):
 
 
 @router.post("/api/py/ai")
-async def generate_summary(body: AISummaryRequest):
+async def generate_summary(body: AISummaryRequest, request: Request = None):
     """
     POST /api/py/ai
 
     Generate an AI weather briefing for a location.
     Cached in MongoDB with tiered TTL (30/60/120 min).
     """
+    # The UI reaches this via the auth-gated /api/ai/* proxy; when
+    # MUKOKO_INTERNAL_SECRET is configured, direct unauthenticated calls
+    # through the blanket /api/py/* rewrite are rejected (issue #92).
+    require_internal_caller(request)
+
     weather_data = body.weatherData
     location = body.location
-    user_activities = body.activities
+    # Validate against known activity ids before it's spliced into the
+    # system prompt below (activities_line / tip).
+    user_activities = filter_known_activities(body.activities)
 
     if not weather_data or not location:
         raise HTTPException(status_code=400, detail="Missing weather data or location")
+
+    # This route is reachable directly (not just via the authenticated
+    # /api/ai/* Next.js proxy — see vercel.json's blanket /api/py/(.*) rewrite),
+    # and every request here is an unauthenticated cache write into the same
+    # ai_summaries doc real visitors to the location page read. Rate-limit it
+    # like every other write/AI endpoint to bound abuse.
+    ip = (get_client_ip(request) if request is not None else None) or "unknown"
+    rate = check_rate_limit(ip, "ai-summary", 30, 3600)
+    if not rate["allowed"]:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again later.")
 
     current_temp = weather_data.get("current", {}).get("temperature_2m", 0) or 0
     current_code = weather_data.get("current", {}).get("weather_code", 0) or 0
@@ -514,12 +531,17 @@ async def generate_summary(body: AISummaryRequest):
             f"{season['description']}. Stay informed and plan your day accordingly."
         )
 
-        _set_cached_summary(
-            location_slug, insight,
-            {"temperature": current_temp, "weatherCode": current_code},
-            location_tags,
-            source="fallback",
-        )
+        # Best-effort cache write — same serve-first discipline as the main
+        # cache write below: a blocked write must never 500 the response.
+        try:
+            _set_cached_summary(
+                location_slug, insight,
+                {"temperature": current_temp, "weatherCode": current_code},
+                location_tags,
+                source="fallback",
+            )
+        except Exception:
+            pass
         return {"insight": insight, "cached": False}
 
     # Build insights section
@@ -552,16 +574,41 @@ async def generate_summary(body: AISummaryRequest):
     codes = json.dumps(weather_data.get("daily", {}).get("weather_code", []), default=str)
 
     tags_line = f"This area is relevant to: {', '.join(location_tags)}." if location_tags else ""
-    activities_line = f"The user's activities: {', '.join(user_activities[:3])}. Tailor advice to these activities." if user_activities else ""
+
+    # Resolve the user's activities to their labels + database-driven AI
+    # guidance. The guidance tells the model what weather factors matter for
+    # each activity and what regional framing to use, so activity advice is
+    # grounded instead of generic filler.
+    briefs = {a.get("id"): a for a in get_activities_brief()}
+    selected = [briefs.get(a) or {"id": a, "label": a} for a in user_activities[:3]]
+    activity_labels = [s.get("label") or s.get("id", "") for s in selected]
+    guidance_lines = [
+        f"- {s.get('label') or s.get('id')}: {s['aiInstructions']}"
+        for s in selected
+        if s.get("aiInstructions")
+    ]
+    activities_line = f"The user's activities: {', '.join(activity_labels)}. Tailor advice to these activities." if activity_labels else ""
+    guidance_block = (
+        "\nActivity guidance (follow strictly, adapted to this location's country and season):\n"
+        + "\n".join(guidance_lines)
+        if guidance_lines
+        else ""
+    )
     activities_tip = (
-        f"One specific tip for the user's activities ({', '.join(user_activities[:3])})"
-        if user_activities
+        f"One specific tip for the user's activities ({', '.join(activity_labels)})"
+        if activity_labels
         else "One industry/context-specific tip relevant to this area (e.g. farming advice for farming areas, safety for mining areas, travel conditions for border/travel areas, outdoor guidance for tourism/national parks)"
     )
 
-    user_content = f"""Generate a weather briefing for {location.name} (elevation: {location.elevation}m).
+    # Country + coordinates ground the model in the actual place — advice
+    # must reference this country's crops, seasons, transport and culture,
+    # never generic global filler.
+    country_part = f", {location.country}" if location.country else ""
+
+    user_content = f"""Generate a weather briefing for {location.name}{country_part} (lat {location.lat}, lon {location.lon}; elevation: {location.elevation}m).
+The country and specific location matter: ground every recommendation in this place — its crops, seasons, transport routes and daily life — not generic global advice.
 {tags_line}
-{activities_line}
+{activities_line}{guidance_block}
 
 Current conditions: {current_data}
 3-day forecast summary: max temps {max_temps}, min temps {min_temps}, weather codes {codes}{insights_prompt}
@@ -618,12 +665,18 @@ Provide:
 
     # Cache the summary — fallback text gets a short TTL (TTL_FALLBACK) so a
     # transient failure doesn't lock users out of real AI summaries for the
-    # full tiered TTL window.
-    _set_cached_summary(
-        location_slug, insight,
-        {"temperature": current_temp, "weatherCode": current_code},
-        location_tags,
-        source=summary_source,
-    )
+    # full tiered TTL window. Best-effort: the insight above is already
+    # generated (Claude tokens spent), so a failed cache write (storage
+    # quota, transient outage) must never turn a good response into a 500 —
+    # same serve-first discipline as the weather endpoint's cache writes.
+    try:
+        _set_cached_summary(
+            location_slug, insight,
+            {"temperature": current_temp, "weatherCode": current_code},
+            location_tags,
+            source=summary_source,
+        )
+    except Exception:
+        pass
 
     return {"insight": insight, "cached": False, "generatedAt": datetime.now(timezone.utc).isoformat()}

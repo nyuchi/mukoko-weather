@@ -19,10 +19,14 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ._db import (
+    require_internal_caller,
     check_rate_limit,
     get_client_ip,
     get_api_key,
     ai_prompts_collection,
+    filter_known_activities,
+    MAX_HISTORY,
+    MAX_MESSAGE_LEN,
 )
 from ._circuit_breaker import anthropic_breaker, CircuitOpenError
 
@@ -32,8 +36,6 @@ router = APIRouter()
 # Constants
 # ---------------------------------------------------------------------------
 
-MAX_HISTORY = 10
-MAX_MESSAGE_LEN = 2000
 MAX_MESSAGES_PER_CONVERSATION = 5
 RATE_LIMIT_MAX = 30
 RATE_LIMIT_WINDOW = 3600  # 1 hour
@@ -166,6 +168,9 @@ async def followup_chat(body: FollowupRequest, request: Request):
     Lightweight follow-up chat for location pages.
     Context is pre-seeded with the AI weather summary.
     """
+    # Proxy-only when MUKOKO_INTERNAL_SECRET is configured (issue #92).
+    require_internal_caller(request)
+
     message = body.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")
@@ -195,12 +200,13 @@ async def followup_chat(body: FollowupRequest, request: Request):
 
     messages.append({"role": "user", "content": message})
 
-    # Build system prompt from database
+    # Build system prompt from database — validate activities against known
+    # ids first, since they're spliced directly into the {activities} template.
     system_prompt = _build_followup_system_prompt(
         body.locationName,
         body.locationSlug,
         body.weatherSummary,
-        body.activities,
+        filter_known_activities(body.activities),
         body.season,
     )
 

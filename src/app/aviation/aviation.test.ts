@@ -26,12 +26,14 @@ describe("AviationPlanner", () => {
     expect(plannerSrc).toContain("Download PDF Briefing");
     expect(plannerSrc).toContain("@react-pdf/renderer");
   });
-  it("uses flight category badges", () => {
+  it("uses flight category badges via the shared flight-category-styles module", () => {
+    // VFR/MVFR/IFR/LIFR color mapping is centralized in
+    // @/lib/flight-category-styles (shared with AviationWeather) so it can't
+    // drift between the two — see flight-category-styles.test.ts for the
+    // category list and color-mapping assertions.
     expect(plannerSrc).toContain("FlightCategoryBadge");
-    expect(plannerSrc).toContain("VFR");
-    expect(plannerSrc).toContain("MVFR");
-    expect(plannerSrc).toContain("IFR");
-    expect(plannerSrc).toContain("LIFR");
+    expect(plannerSrc).toContain("getFlightCategoryClass");
+    expect(plannerSrc).toContain("@/lib/flight-category-styles");
   });
   it("fetches METAR from API", () => {
     expect(plannerSrc).toContain("/api/py/metar");
@@ -59,11 +61,12 @@ describe("AviationPlanner — Harare-bug fixes", () => {
     expect(plannerSrc).not.toContain("d.weather?.daily");
   });
 
-  it("catches airport-search failures so the spinner never sticks", () => {
-    expect(plannerSrc).toContain("catch");
+  it("surfaces airport-search failures via the shared quick-search hook", () => {
+    // Fetch failures, cancellation, and the loading flag are handled inside
+    // useLocationQuickSearch (which clears loading in finally); this picker
+    // only maps the hook's error flag to its message.
+    expect(plannerSrc).toContain("useLocationQuickSearch({ limit: 8, minLength: 2 })");
     expect(plannerSrc).toContain("searchError");
-    // The search callback must clear loading in finally after catching.
-    expect(plannerSrc).toContain("finally { setLoading(false); }");
   });
 });
 
@@ -71,13 +74,10 @@ describe("Aviation error boundary", () => {
   it("is a client component", () => {
     expect(errorSrc).toContain('"use client"');
   });
-  it("exports a default error component with error + reset props", () => {
+  it("exports a default error component wrapping the shared RouteErrorBoundary", () => {
     expect(errorSrc).toContain("export default function AviationError");
-    expect(errorSrc).toContain("reset");
-  });
-  it("reports to analytics and offers retry", () => {
-    expect(errorSrc).toContain("reportErrorToAnalytics");
-    expect(errorSrc).toContain("Try again");
+    expect(errorSrc).toContain("RouteErrorBoundary");
+    expect(errorSrc).toContain('source="aviation"');
   });
 });
 

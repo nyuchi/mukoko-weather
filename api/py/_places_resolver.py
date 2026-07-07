@@ -393,19 +393,24 @@ def find_locations_in_country(iso: str, *, limit: int = 200) -> list[dict]:
         return []
 
 
-def find_nearest_location(
+def find_nearest_locations(
     lat: float,
     lon: float,
     *,
+    limit: int = 20,
     max_km: float = 50,
-) -> Optional[dict]:
-    """Return the nearest mukoko-discoverable placesGeo entry to (lat, lon).
+) -> list[dict]:
+    """Return the nearest mukoko-discoverable placesGeo entries to (lat, lon),
+    closest first.
 
-    Uses ``$nearSphere`` on the 2dsphere index. Returns ``None`` if
-    nothing is within ``max_km`` or the index is unavailable.
+    The canonical ``$nearSphere`` proximity query — GET /api/py/search's
+    geospatial branch and :func:`find_nearest_location` both route through
+    here so the query shape (geoType scoping, index use) can't drift between
+    callers. Returns ``[]`` if nothing is within ``max_km`` or the index is
+    unavailable.
     """
     try:
-        doc = places_geo_collection().find_one({
+        docs = places_geo_collection().find({
             "geoType": {"$in": ["city", "town", "village"]},
             "geo": {
                 "$nearSphere": {
@@ -413,10 +418,78 @@ def find_nearest_location(
                     "$maxDistance": max(0.0, max_km) * 1000,
                 }
             },
-        })
-        if not doc:
-            return None
-        return adapt_placesgeo_to_location(doc)
+        }).limit(max(1, limit))
+        results = []
+        for doc in docs:
+            adapted = adapt_placesgeo_to_location(doc)
+            if adapted:
+                results.append(adapted)
+        return results
     except Exception as exc:  # noqa: BLE001
         logger.debug("placesGeo nearest query failed: %s", exc)
-        return None
+        return []
+
+
+def find_nearest_location(
+    lat: float,
+    lon: float,
+    *,
+    max_km: float = 50,
+) -> Optional[dict]:
+    """Nearest single mukoko-discoverable placesGeo entry, or ``None``."""
+    results = find_nearest_locations(lat, lon, limit=1, max_km=max_km)
+    return results[0] if results else None
+
+
+def search_locations_by_name(
+    query: str,
+    *,
+    limit: int = 10,
+    skip: int = 0,
+    tag: Optional[str] = None,
+) -> list[dict]:
+    """Case-insensitive regex search across placesGeo name/slug/mukokoSlug,
+    scoped to consumer-facing geoTypes (city/town/village).
+
+    Shared by GET /api/py/search's text-search branch and the Shamwari chat
+    tool's search_locations, so the query shape can't drift between the two.
+    Atlas Search and $text indexes lived on weather.locations, which is
+    dropped — until equivalent indexes are provisioned on places.placesGeo,
+    this regex match is the interim text-search implementation.
+    """
+    q = query.strip()[:200]
+    if not q:
+        return []
+
+    regex = {"$regex": re.escape(q), "$options": "i"}
+    query_filter: dict = {
+        "geoType": {"$in": ["city", "town", "village"]},
+        "$or": [
+            {"name": regex},
+            {"slug": regex},
+            {"sourceProvenance.mukokoSlug": regex},
+        ],
+    }
+    if tag:
+        query_filter["sourceProvenance.mukokoTags"] = tag
+
+    try:
+        docs = list(
+            places_geo_collection()
+            .find(query_filter)
+            .sort([("name", 1)])
+            .skip(skip)
+            .limit(limit)
+            .max_time_ms(3000)
+        )
+    except Exception:
+        return []
+
+    results = []
+    for doc in docs:
+        adapted = adapt_placesgeo_to_location(doc)
+        if not adapted:
+            continue
+        adapted.pop("_id", None)
+        results.append(adapted)
+    return results

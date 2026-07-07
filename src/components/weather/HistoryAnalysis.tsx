@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useCallback, Component, type ReactNode } from "react";
-import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import { SparklesIcon } from "@/lib/weather-icons";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store";
-import { isFeatureEnabled } from "@/lib/feature-flags";
 import { trackEvent } from "@/lib/analytics";
+import { ShamwariCTA } from "./ShamwariCTA";
+import { Spinner } from "@/components/ui/spinner";
 
 // ---------------------------------------------------------------------------
 // Markdown error boundary
@@ -60,8 +60,6 @@ export function HistoryAnalysis({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedActivities = useAppStore((s) => s.selectedActivities);
-  const setShamwariContext = useAppStore((s) => s.setShamwariContext);
-  const shamwariEnabled = isFeatureEnabled("shamwari_chat");
 
   const analyze = useCallback(async () => {
     setLoading(true);
@@ -101,16 +99,13 @@ export function HistoryAnalysis({
     }
   }, [locationSlug, days, selectedActivities]);
 
-  const handleContinueInShamwari = () => {
-    setShamwariContext({
-      source: "history",
-      locationSlug,
-      locationName,
-      historyDays: days,
-      historyAnalysis: analysis ?? undefined,
-      activities: selectedActivities,
-      timestamp: Date.now(),
-    });
+  const shamwariContext = {
+    source: "history" as const,
+    locationSlug,
+    locationName,
+    historyDays: days,
+    historyAnalysis: analysis ?? undefined,
+    activities: selectedActivities,
   };
 
   return (
@@ -151,7 +146,7 @@ export function HistoryAnalysis({
 
       {loading && (
         <div className="mt-3 flex items-center gap-2" role="status">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <Spinner />
           <span className="text-base text-text-secondary">
             Analyzing {days}-day history...
           </span>
@@ -192,16 +187,11 @@ export function HistoryAnalysis({
             >
               Re-analyze
             </Button>
-            {shamwariEnabled && (
-              <Link
-                href="/shamwari"
-                onClick={handleContinueInShamwari}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-input)] bg-primary px-3 py-2 text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 min-h-[var(--touch-target-min)]"
-              >
-                <SparklesIcon size={12} />
-                Discuss in Shamwari
-              </Link>
-            )}
+            <ShamwariCTA
+              context={shamwariContext}
+              label="Discuss in Shamwari"
+              variant="primary"
+            />
           </div>
         </div>
       )}

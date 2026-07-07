@@ -49,30 +49,33 @@ class TestTomorrowCodeToWmo:
 
     def test_fog_codes(self):
         assert _tomorrow_code_to_wmo(2000) == 45
-        assert _tomorrow_code_to_wmo(2100) == 48
+        assert _tomorrow_code_to_wmo(2100) == 45  # Light Fog → Fog
 
     def test_rain_codes(self):
-        assert _tomorrow_code_to_wmo(4000) == 51  # drizzle
-        assert _tomorrow_code_to_wmo(4001) == 61  # rain
-        assert _tomorrow_code_to_wmo(4200) == 63  # heavy rain
-        assert _tomorrow_code_to_wmo(4201) == 65  # intense rain
+        # Canonical values per Tomorrow.io's documented labels (issue #101):
+        # 4001 "Rain" is the moderate baseline; 4200 "Light Rain" is slight.
+        assert _tomorrow_code_to_wmo(4000) == 51  # Drizzle → light drizzle
+        assert _tomorrow_code_to_wmo(4001) == 63  # Rain → moderate rain
+        assert _tomorrow_code_to_wmo(4200) == 61  # Light Rain → slight rain
+        assert _tomorrow_code_to_wmo(4201) == 65  # Heavy Rain → heavy rain
 
     def test_snow_codes(self):
-        assert _tomorrow_code_to_wmo(5000) == 71
-        assert _tomorrow_code_to_wmo(5001) == 73
-        assert _tomorrow_code_to_wmo(5100) == 75
-        assert _tomorrow_code_to_wmo(5101) == 77
+        assert _tomorrow_code_to_wmo(5000) == 73  # Snow → moderate snow
+        assert _tomorrow_code_to_wmo(5001) == 71  # Flurries → slight snow
+        assert _tomorrow_code_to_wmo(5100) == 71  # Light Snow → slight snow
+        assert _tomorrow_code_to_wmo(5101) == 75  # Heavy Snow → heavy snow
 
     def test_freezing_rain(self):
-        assert _tomorrow_code_to_wmo(6000) == 56
-        assert _tomorrow_code_to_wmo(6001) == 66
-        assert _tomorrow_code_to_wmo(6200) == 67
-        assert _tomorrow_code_to_wmo(6201) == 67
+        assert _tomorrow_code_to_wmo(6000) == 66  # Freezing Drizzle → light freezing rain
+        assert _tomorrow_code_to_wmo(6001) == 67  # Freezing Rain → heavy freezing rain
+        assert _tomorrow_code_to_wmo(6200) == 66  # Light Freezing Rain
+        assert _tomorrow_code_to_wmo(6201) == 67  # Heavy Freezing Rain
 
     def test_ice_pellets(self):
+        # All ice-pellet variants → 77 (snow grains) — the closest WMO code.
         assert _tomorrow_code_to_wmo(7000) == 77
-        assert _tomorrow_code_to_wmo(7101) == 85
-        assert _tomorrow_code_to_wmo(7102) == 86
+        assert _tomorrow_code_to_wmo(7101) == 77
+        assert _tomorrow_code_to_wmo(7102) == 77
 
     def test_thunderstorm(self):
         assert _tomorrow_code_to_wmo(8000) == 95
@@ -199,8 +202,21 @@ class TestNormalizeTomorrow:
         raw = self._make_raw(hourly_count=1)
         raw["timelines"]["hourly"][0]["values"]["weatherCode"] = 4001
         result = _normalize_tomorrow(raw)
-        assert result["current"]["weather_code"] == 61  # 4001 -> 61
-        assert result["hourly"]["weather_code"][0] == 61
+        assert result["current"]["weather_code"] == 63  # 4001 "Rain" -> moderate
+        assert result["hourly"]["weather_code"][0] == 63
+
+    def test_canonical_shape_includes_is_day_and_units(self):
+        """The normalization must emit the FULL WeatherData shape (issue #101):
+        is_day (current + hourly), precipitation_probability, visibility, and
+        current_units — fields the UI depends on (day/night icons, hourly
+        cards) that the old Python normalization silently dropped."""
+        raw = self._make_raw(hourly_count=2)
+        result = _normalize_tomorrow(raw)
+        assert result["current"]["is_day"] in (0, 1)
+        assert len(result["hourly"]["is_day"]) == 2
+        assert len(result["hourly"]["precipitation_probability"]) == 2
+        assert len(result["hourly"]["visibility"]) == 2
+        assert result["current_units"]["temperature_2m"] == "°C"
 
     def test_missing_timelines_produces_empty_result(self):
         raw = {}
@@ -620,6 +636,38 @@ class TestGetWeatherEndpoint:
 
         response = await get_weather(-17.83, 31.05)
         assert response.headers.get("x-weather-provider") == "open-meteo"
+
+    @pytest.mark.asyncio
+    @patch("py._weather._record_weather_history")
+    @patch("py._weather._set_cached_weather")
+    @patch("py._weather._fetch_open_meteo")
+    @patch("py._weather.open_meteo_breaker")
+    @patch("py._weather._fetch_tomorrow")
+    @patch("py._weather.get_api_key")
+    @patch("py._weather.tomorrow_breaker")
+    @patch("py._weather._get_cached_weather")
+    @patch("py._weather._find_nearest_location")
+    async def test_tomorrow_empty_current_falls_back_to_open_meteo(
+        self, mock_nearest, mock_cache, mock_tmrw_breaker, mock_key,
+        mock_fetch_tmrw, mock_om_breaker, mock_fetch_om, mock_set, mock_record,
+    ):
+        """_normalize_tomorrow always returns a non-empty dict (with
+        hourly/daily/insights keys) even when Tomorrow.io's `timelines.hourly`
+        came back empty — `current` itself is `{}` in that case. A plain
+        truthiness check on the returned dict would never fall through to
+        Open-Meteo; this must be treated as a Tomorrow.io failure instead."""
+        mock_nearest.return_value = {"slug": "harare", "elevation": 1200}
+        mock_cache.return_value = None
+        mock_tmrw_breaker.is_allowed = True
+        mock_key.return_value = "fake-key"
+        mock_fetch_tmrw.return_value = {"current": {}, "hourly": {}, "daily": {}, "insights": None}
+        mock_om_breaker.is_allowed = True
+        mock_fetch_om.return_value = {"current": {"temperature_2m": 24}, "hourly": {}, "daily": {}, "insights": None}
+
+        response = await get_weather(-17.83, 31.05)
+        assert response.headers.get("x-weather-provider") == "open-meteo"
+        mock_tmrw_breaker.record_failure.assert_called_once()
+        mock_tmrw_breaker.record_success.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("py._weather._create_fallback_weather")
@@ -1409,3 +1457,51 @@ class TestEndpointMultiModel:
 
         await get_weather(-17.83, 31.05)
         assert "minutely" not in cached_data
+
+
+# ---------------------------------------------------------------------------
+# Single canonical fetch/cache path (issue #101)
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalWeatherShape:
+    """The Python endpoint is the ONLY weather_cache/weather_history writer —
+    its output must carry every field the UI consumes."""
+
+    def test_open_meteo_requests_is_day_and_uv_index(self):
+        import inspect
+        from py._weather import _fetch_open_meteo
+        src = inspect.getsource(_fetch_open_meteo)
+        assert "uv_index,is_day" in src          # current params
+        assert "visibility,is_day" in src        # hourly params
+
+    def test_fallback_weather_includes_is_day_and_units(self):
+        from py._weather import _create_fallback_weather
+        data = _create_fallback_weather(-17.83, 31.05, 1200)
+        assert data["current"]["is_day"] in (0, 1)
+        assert data["current"]["uv_index"] is not None
+        assert len(data["hourly"]["is_day"]) == 24
+        assert data["current_units"]["temperature_2m"] == "°C"
+
+    def test_compute_is_day_uses_sunrise_sunset(self):
+        from py._weather import _compute_is_day
+        daily = [{"values": {
+            "sunriseTime": "2026-07-06T06:00:00Z",
+            "sunsetTime": "2026-07-06T18:00:00Z",
+        }}]
+        assert _compute_is_day("2026-07-06T12:00:00Z", daily) == 1
+        assert _compute_is_day("2026-07-06T22:00:00Z", daily) == 0
+
+    def test_compute_is_day_heuristic_without_daily(self):
+        from py._weather import _compute_is_day
+        assert _compute_is_day("2026-07-06T12:00:00Z", []) == 1
+        assert _compute_is_day("2026-07-06T02:00:00Z", []) == 0
+
+    def test_station_blend_preserves_forecast_only_fields(self):
+        """StationKit hardware doesn't measure is_day/uv_index — the blend
+        must overlay station sensor fields onto the forecast current, not
+        replace it wholesale (which used to drop is_day → night icon bug)."""
+        import inspect
+        import py._weather as w
+        src = inspect.getsource(w)
+        assert '{**(data.get("current") or {}), **station_current}' in src

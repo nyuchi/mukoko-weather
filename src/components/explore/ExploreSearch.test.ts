@@ -12,13 +12,13 @@ const source = readFileSync(resolve(__dirname, "ExploreSearch.tsx"), "utf-8");
  */
 
 describe("ExploreSearch — instant quick matches", () => {
-  it("debounces the query and calls the same fast search endpoint used elsewhere in the app", () => {
-    // Same endpoint + debounce pattern as MyWeatherModal's location search,
-    // so typing a city name here behaves the same way it does everywhere
-    // else in the app — the AI search below is a separate, deliberate step.
-    expect(source).toContain('from "@/lib/use-debounce"');
-    expect(source).toContain("useDebounce(query, 300)");
-    expect(source).toContain("/api/py/search?q=");
+  it("uses the shared quick-location-search hook — same one MyWeatherModal uses", () => {
+    // Single shared implementation (debounce, cancellation, result shape)
+    // instead of a hand-rolled copy, so typing a city name here behaves the
+    // same way it does everywhere else in the app — the AI search below is
+    // a separate, deliberate step.
+    expect(source).toContain('from "@/lib/use-location-quick-search"');
+    expect(source).toContain("useLocationQuickSearch({ limit: 6 })");
   });
 
   it("shows quick results as plain location links, independent of the AI search results", () => {
@@ -26,9 +26,8 @@ describe("ExploreSearch — instant quick matches", () => {
     expect(source).toContain('aria-label="Quick location matches"');
   });
 
-  it("cancels in-flight quick searches on rapid typing", () => {
-    expect(source).toContain("AbortController");
-    expect(source).toContain("controller.signal");
+  it("shows a no-results message instead of nothing when a query returns no matches", () => {
+    expect(source).toContain("No results for");
   });
 });
 
@@ -111,9 +110,13 @@ describe("results rendering", () => {
 });
 
 describe("Shamwari context integration", () => {
-  it("imports useAppStore for context setting", () => {
-    expect(source).toContain("useAppStore");
-    expect(source).toContain("setShamwariContext");
+  // The feature-flag gate + setShamwariContext handoff + link rendering now
+  // live in the shared <ShamwariCTA> component (@/components/weather/ShamwariCTA)
+  // instead of being hand-rolled here — see ShamwariCTA's own tests for that
+  // behavior. This file only asserts ExploreSearch builds the right context.
+  it("imports ShamwariCTA", () => {
+    expect(source).toContain("ShamwariCTA");
+    expect(source).toContain("@/components/weather/ShamwariCTA");
   });
 
   it("sets explore context when navigating to Shamwari", () => {
@@ -121,14 +124,8 @@ describe("Shamwari context integration", () => {
     expect(source).toContain("exploreQuery: query");
   });
 
-  it("has an 'Ask Shamwari for more' link", () => {
+  it("has an 'Ask Shamwari for more' CTA", () => {
     expect(source).toContain("Ask Shamwari for more");
-    expect(source).toContain('href="/shamwari"');
-  });
-
-  it("gates the link behind the shamwari_chat feature flag", () => {
-    expect(source).toContain('isFeatureEnabled("shamwari_chat")');
-    expect(source).toContain("shamwariEnabled &&");
   });
 });
 
@@ -139,7 +136,8 @@ describe("UI patterns", () => {
   });
 
   it("shows loading spinner in button", () => {
-    expect(source).toContain("animate-spin");
+    // Spinner is the shared primitive (src/components/ui/spinner.tsx)
+    expect(source).toContain("<Spinner");
   });
 
   it("shows empty state when no results", () => {

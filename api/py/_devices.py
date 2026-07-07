@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
-from ._db import device_profiles_collection
+from ._db import (
+    device_profiles_collection,
+    get_client_ip,
+    check_rate_limit,
+    SLUG_RE,
+)
 
 router = APIRouter()
 
@@ -30,7 +34,6 @@ VALID_FORECAST_MODELS = {
 }
 MAX_ACTIVITIES = 30
 MAX_SAVED_LOCATIONS = 10
-SLUG_RE = re.compile(r"^[a-z0-9-]{1,80}$")
 
 
 class Preferences(BaseModel):
@@ -143,7 +146,16 @@ def _ensure_indexes():
 
 
 @router.post("/api/py/devices", status_code=201)
-async def create_device(body: CreateDeviceRequest):
+async def create_device(body: CreateDeviceRequest, request: Request = None):
+    # Only a fresh/omitted deviceId does unbounded work (always inserts a new
+    # doc) — an existing deviceId is idempotent (DuplicateKeyError returns the
+    # existing profile below), so only the create path needs throttling.
+    if not body.deviceId:
+        ip = (get_client_ip(request) if request is not None else None) or "unknown"
+        rate = check_rate_limit(ip, "device-create", 20, 3600)
+        if not rate["allowed"]:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again later.")
+
     _ensure_indexes()
     device_id = body.deviceId or str(uuid.uuid4())
     _validate_theme(body.preferences.theme)

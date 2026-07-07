@@ -16,7 +16,9 @@ will reject malformed writes. Use ``stamp_platform_fields()`` to add these.
 
 from __future__ import annotations
 
+import hmac
 import os
+import re
 import time as _time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -27,6 +29,21 @@ from pymongo import MongoClient
 from pymongo.database import Database
 
 _client: Optional[MongoClient] = None
+
+# ---------------------------------------------------------------------------
+# Shared validation constants — single source so slug format and message/
+# history caps can't drift between endpoints.
+# ---------------------------------------------------------------------------
+
+#: Location slug format, shared by _chat.py, _devices.py, _explore_search.py,
+#: and _locations.py.
+SLUG_RE = re.compile(r"^[a-z0-9-]{1,80}$")
+
+#: Chat/follow-up message length cap, shared by _chat.py and _ai_followup.py.
+MAX_MESSAGE_LEN = 2000
+
+#: Conversation history length cap, shared by _chat.py and _ai_followup.py.
+MAX_HISTORY = 10
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +382,31 @@ def get_client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def require_internal_caller(request: Request | None) -> None:
+    """Optional shared-secret gate for routes fronted by the Next.js proxy.
+
+    The UI only ever reaches ``/api/py/ai/*`` through the auth-gated
+    ``/api/ai/*`` Next.js proxy — but ``vercel.json``'s blanket rewrite makes
+    every ``/api/py/*`` route ALSO reachable directly, unauthenticated. When
+    ``MUKOKO_INTERNAL_SECRET`` is set (one env var, read by both the Next.js
+    and Python runtimes of the same deployment), the proxy stamps it onto the
+    forwarded request as ``X-Mukoko-Internal`` and this guard rejects any
+    direct caller without it.
+
+    When the env var is UNSET the guard is a no-op — deploys keep working
+    with no config change, protected only by rate limiting as before.
+    Raises ``HTTPException(401)`` on mismatch.
+    """
+    secret = os.environ.get("MUKOKO_INTERNAL_SECRET", "")
+    if not secret:
+        return
+    provided = ""
+    if request is not None:
+        provided = request.headers.get("x-mukoko-internal") or ""
+    if not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 # ---------------------------------------------------------------------------
 # Tag cache — shared across chat, explore, etc.
 # ---------------------------------------------------------------------------
@@ -400,6 +442,83 @@ def get_known_tags() -> set[str]:
         }
 
 
+_known_activities: Optional[set[str]] = None
+_known_activities_at: float = 0
+_ACTIVITIES_CACHE_TTL = 300  # 5 minutes
+
+
+def filter_known_activities(activities: list[str]) -> list[str]:
+    """
+    Filter a client-supplied activities list down to known activity ids
+    (cached 5 min from MongoDB) before it's spliced into any AI system
+    prompt.
+
+    Unlike `message`/`history` (length-capped) and location slugs
+    (SLUG_RE-validated), each string in a request's `activities` list was
+    previously joined into prompts with no validation — a caller could pass
+    an arbitrary (unbounded-length) string that lands directly in a prompt
+    as if it were a legitimate activity, more trusted than a user turn.
+    Unknown entries are silently dropped rather than rejected: legitimate
+    callers only ever send ids from the app's own activity picker
+    (src/lib/activities.ts), so this never affects normal use. Falls back
+    to a minimal hardcoded set if the database is unavailable, mirroring
+    get_known_tags().
+    """
+    global _known_activities, _known_activities_at
+
+    now = _time.time()
+    if _known_activities is None or (now - _known_activities_at) >= _ACTIVITIES_CACHE_TTL:
+        try:
+            docs = list(activities_collection().find({}, {"id": 1, "_id": 0}))
+            _known_activities = {d["id"] for d in docs if d.get("id")}
+            _known_activities_at = now
+        except Exception:
+            if _known_activities is None:
+                # Minimal fallback — matches a subset of the seed activities
+                _known_activities = {
+                    "crop-farming", "livestock", "mining", "construction",
+                    "driving", "safari", "soccer", "braai",
+                }
+
+    return [a for a in activities if a in _known_activities]
+
+
+_activities_brief: list[dict] = []
+_activities_brief_at: float = 0
+
+
+def get_activities_brief() -> list[dict]:
+    """
+    Cached (5 min) list of {id, label, category, aiInstructions} for every
+    activity. Shared by the Shamwari chat system prompt (activity list +
+    per-activity guidance) and the AI summary prompt (guidance for the
+    user's selected activities) so the two surfaces read the same
+    database-driven instructions and can't drift. `aiInstructions` is
+    data-managed (written straight to MongoDB, not part of the code seed) —
+    it tells the model what weather factors matter for that activity and
+    what regional framing to use, so advice stays grounded instead of
+    generic.
+    """
+    global _activities_brief, _activities_brief_at
+
+    now = _time.time()
+    if _activities_brief and (now - _activities_brief_at) < _ACTIVITIES_CACHE_TTL:
+        return _activities_brief
+
+    try:
+        docs = list(
+            activities_collection()
+            .find({}, {"id": 1, "label": 1, "category": 1, "aiInstructions": 1, "_id": 0})
+            .sort([("category", 1), ("label", 1)])
+        )
+        if docs:
+            _activities_brief = docs
+            _activities_brief_at = now
+        return docs or _activities_brief
+    except Exception:
+        return _activities_brief
+
+
 def check_rate_limit(ip: str, action: str, max_requests: int, window_seconds: int) -> dict:
     """
     MongoDB-backed rate limiter using atomic findOneAndUpdate.
@@ -409,15 +528,25 @@ def check_rate_limit(ip: str, action: str, max_requests: int, window_seconds: in
     now = datetime.now(timezone.utc)
     expires = now + timedelta(seconds=window_seconds)
 
-    result = rate_limits_collection().find_one_and_update(
-        {"key": key},
-        {
-            "$inc": {"count": 1},
-            "$setOnInsert": {"expiresAt": expires},
-        },
-        upsert=True,
-        return_document=True,
-    )
+    try:
+        result = rate_limits_collection().find_one_and_update(
+            {"key": key},
+            {
+                "$inc": {"count": 1},
+                "$setOnInsert": {"expiresAt": expires},
+            },
+            upsert=True,
+            return_document=True,
+        )
+    except Exception:
+        # Fail OPEN. The limiter is abuse protection, not a core function —
+        # its upsert is a DB write that runs BEFORE the actual work on every
+        # rate-limited endpoint. When the cluster can't accept writes
+        # (storage quota reached, credential rotation, transient outage),
+        # raising here 500s all nine rate-limited endpoints at once even
+        # though most of them could still serve. Serving unmetered during a
+        # DB outage is the lesser harm.
+        return {"allowed": True, "remaining": 0}
 
     count = result.get("count", 1) if result else 1
     allowed = count <= max_requests

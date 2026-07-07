@@ -184,31 +184,6 @@ describe("savedLocations", () => {
   });
 });
 
-describe("savedLocationsOpen", () => {
-  it("defaults to false", () => {
-    expect(useAppStore.getState().savedLocationsOpen).toBe(false);
-  });
-
-  it("openSavedLocations sets it to true", () => {
-    useAppStore.getState().openSavedLocations();
-    expect(useAppStore.getState().savedLocationsOpen).toBe(true);
-  });
-
-  it("closeSavedLocations sets it back to false", () => {
-    useAppStore.getState().openSavedLocations();
-    useAppStore.getState().closeSavedLocations();
-    expect(useAppStore.getState().savedLocationsOpen).toBe(false);
-  });
-
-  it("is NOT persisted to RxDB (transient state)", async () => {
-    const { updatePreferences } = await import("./rxdb/bridge");
-    vi.mocked(updatePreferences).mockClear();
-    useAppStore.getState().openSavedLocations();
-    // Transient state should NOT trigger RxDB persistence
-    expect(updatePreferences).not.toHaveBeenCalled();
-  });
-});
-
 describe("myWeatherOpen", () => {
   it("defaults to false", () => {
     expect(useAppStore.getState().myWeatherOpen).toBe(false);
@@ -389,9 +364,18 @@ describe("sectionOrder", () => {
     expect(sectionOrder).toContain("hourlyScroll");
     expect(sectionOrder).toContain("current");
     expect(sectionOrder).toContain("atmospheric");
-    expect(sectionOrder).toContain("dailyForecast");
+    expect(sectionOrder).toContain("activityInsights");
     expect(sectionOrder).toContain("aiSummary");
     expect(sectionOrder.length).toBeGreaterThan(5);
+  });
+
+  it("does not include hourlyForecast/dailyForecast — full detail lives on /forecast only", () => {
+    // These duplicated /forecast's HourlyForecast/DailyForecast charts
+    // verbatim on the main page. HourlyScrollCards (always present) is the
+    // main-page preview; full detail is a deliberate navigation to /forecast.
+    const { sectionOrder } = useAppStore.getState();
+    expect(sectionOrder).not.toContain("hourlyForecast");
+    expect(sectionOrder).not.toContain("dailyForecast");
   });
 
   it("puts the current-conditions hero first, before the hourly scroll strip", () => {
@@ -411,7 +395,7 @@ describe("sectionOrder", () => {
 
   it("setSectionOrder accepts any string array", () => {
     // localStorage is not available in Node test environment — only test store state
-    const custom = ["atmospheric", "current", "dailyForecast"];
+    const custom = ["atmospheric", "current", "aiSummary"];
     useAppStore.getState().setSectionOrder(custom);
     expect(useAppStore.getState().sectionOrder).toEqual(custom);
   });
@@ -426,9 +410,7 @@ describe("sectionOrder", () => {
       "hourlyScroll",
       "atmospheric",
       "reports",
-      "hourlyForecast",
       "activityInsights",
-      "dailyForecast",
       "aiSummary",
       "aiChat",
     ]);
@@ -445,14 +427,7 @@ describe("sectionOrder", () => {
 describe("mergeSectionOrder (Bug 2 — union stored order with defaults)", () => {
   it("appends sections added AFTER a user saved their order, at their default position", () => {
     // A legacy user saved before hourlyScroll/reports/aiChat existed.
-    const stored = [
-      "current",
-      "atmospheric",
-      "hourlyForecast",
-      "activityInsights",
-      "dailyForecast",
-      "aiSummary",
-    ];
+    const stored = ["current", "atmospheric", "activityInsights", "aiSummary"];
     const merged = mergeSectionOrder(stored);
     // Every default section is now present...
     for (const id of DEFAULT_SECTION_ORDER) expect(merged).toContain(id);
@@ -462,9 +437,7 @@ describe("mergeSectionOrder (Bug 2 — union stored order with defaults)", () =>
       "hourlyScroll",
       "atmospheric",
       "reports",
-      "hourlyForecast",
       "activityInsights",
-      "dailyForecast",
       "aiSummary",
       "aiChat",
     ]);
@@ -478,6 +451,27 @@ describe("mergeSectionOrder (Bug 2 — union stored order with defaults)", () =>
     expect(merged).toContain("atmospheric");
   });
 
+  it("drops the removed hourlyForecast/dailyForecast ids from a pre-existing stored order", () => {
+    // Users who customised their layout before these sections were removed
+    // (full detail moved exclusively to /forecast) have them lingering in
+    // localStorage — must disappear silently, not error or leave a gap.
+    const stored = [
+      "current",
+      "hourlyScroll",
+      "atmospheric",
+      "reports",
+      "hourlyForecast",
+      "activityInsights",
+      "dailyForecast",
+      "aiSummary",
+      "aiChat",
+    ];
+    const merged = mergeSectionOrder(stored);
+    expect(merged).not.toContain("hourlyForecast");
+    expect(merged).not.toContain("dailyForecast");
+    expect(merged).toEqual([...DEFAULT_SECTION_ORDER]);
+  });
+
   it("preserves the user's custom ordering of the sections they DID arrange", () => {
     // User moved atmospheric above current and dropped nothing else.
     const stored = [
@@ -485,9 +479,7 @@ describe("mergeSectionOrder (Bug 2 — union stored order with defaults)", () =>
       "current",
       "hourlyScroll",
       "reports",
-      "hourlyForecast",
       "activityInsights",
-      "dailyForecast",
       "aiSummary",
       "aiChat",
     ];

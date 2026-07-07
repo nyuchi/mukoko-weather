@@ -48,7 +48,8 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
 ]);
 
 interface ProxyParams {
-  params: Promise<{ path: string[] }>;
+  // Optional catch-all — `path` is undefined for the bare /api/ai request.
+  params: Promise<{ path?: string[] }>;
 }
 
 async function proxy(req: NextRequest, { params }: ProxyParams): Promise<Response> {
@@ -64,7 +65,12 @@ async function proxy(req: NextRequest, { params }: ProxyParams): Promise<Respons
   const subpath = (path ?? []).join("/");
   const url = new URL(req.url);
   // Build the upstream URL — same origin, but rerouted to the Python prefix.
-  const upstream = new URL(`/api/py/ai/${subpath}`, url.origin);
+  // The route is an OPTIONAL catch-all ([[...path]]) so the bare `/api/ai`
+  // (the AI summary endpoint — AISummary POSTs here) matches too; a required
+  // catch-all silently fell through to Next's 404 page and the widget showed
+  // "Unable to load AI summary" for every signed-in user. No trailing slash
+  // when there's no subpath — FastAPI's `/api/py/ai/` would 307-redirect.
+  const upstream = new URL(subpath ? `/api/py/ai/${subpath}` : "/api/py/ai", url.origin);
   upstream.search = url.search;
 
   // Forward request headers minus hop-by-hop / cookie, plus the user identity.
@@ -76,6 +82,12 @@ async function proxy(req: NextRequest, { params }: ProxyParams): Promise<Respons
   });
   headers.set("X-Mukoko-User-Id", user.id);
   if (user.email) headers.set("X-Mukoko-User-Email", user.email);
+  // Shared-secret stamp (issue #92): when MUKOKO_INTERNAL_SECRET is set —
+  // one env var read by both the Next.js and Python runtimes of the same
+  // deployment — Python's require_internal_caller() rejects any /api/py/ai/*
+  // request that didn't come through this proxy. Unset = guard disabled.
+  const internalSecret = process.env.MUKOKO_INTERNAL_SECRET;
+  if (internalSecret) headers.set("X-Mukoko-Internal", internalSecret);
 
   // Body is only meaningful for non-GET/HEAD. NextRequest exposes a stream
   // body — pass it through verbatim. `duplex: "half"` is required by the

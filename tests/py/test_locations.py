@@ -32,6 +32,7 @@ from py._locations import (
     SLUG_RE,
     DEDUP_RADIUS_KM,
 )
+from py._places_resolver import find_nearest_locations, search_locations_by_name
 
 
 # ---------------------------------------------------------------------------
@@ -568,9 +569,11 @@ class TestSearchLocations:
     """Phase 0G: search queries placesGeo (regex on name/slug + mukokoSlug)."""
 
     @pytest.mark.asyncio
-    @patch("py._locations.places_geo_collection")
+    @patch("py._places_resolver.places_geo_collection")
     async def test_text_search(self, mock_coll):
-        # placesGeo doc shape — adapter converts to legacy LocationDoc shape
+        # placesGeo doc shape — adapter converts to legacy LocationDoc shape.
+        # Query now runs inside search_locations_by_name (py._places_resolver),
+        # shared with the Shamwari chat tool's search_locations.
         placesgeo_doc = {
             "_id": "uuid-harare",
             "name": "Harare",
@@ -592,23 +595,17 @@ class TestSearchLocations:
         assert "score" not in result["locations"][0]
 
     @pytest.mark.asyncio
-    @patch("py._locations.places_geo_collection")
-    async def test_geospatial_search(self, mock_coll):
-        placesgeo_doc = {
-            "_id": "uuid-harare",
-            "name": "Harare",
-            "slug": "harare-a1b2c3",
-            "geoType": "city",
-            "geo": {"type": "Point", "coordinates": [31.05, -17.83]},
-            "sourceProvenance": {"mukokoSlug": "harare", "mukokoTags": ["city"]},
-        }
-        mock_find = MagicMock()
-        mock_find.limit.return_value = [placesgeo_doc]
-        mock_coll.return_value.find.return_value = mock_find
+    @patch("py._locations.find_nearest_locations")
+    async def test_geospatial_search(self, mock_nearest):
+        """The geo branch delegates to the canonical resolver helper (100km)."""
+        mock_nearest.return_value = [
+            {"slug": "harare", "name": "Harare", "tags": ["city"]},
+        ]
 
         result = await search_locations(lat="-17.83", lon="31.05")
         assert result["source"] == "mongodb"
         assert len(result["locations"]) == 1
+        mock_nearest.assert_called_once_with(-17.83, 31.05, limit=20, max_km=100)
 
     @pytest.mark.asyncio
     @patch("py._locations.find_locations_by_tag")
@@ -635,6 +632,74 @@ class TestSearchLocations:
         assert "tags" in result
 
 
+class TestSearchLocationsByName:
+    """search_locations_by_name (py._places_resolver) — shared regex search
+    used by both GET /api/py/search's text-search branch and the Shamwari
+    chat tool's search_locations, so their query shape can't drift apart."""
+
+    def test_empty_query_returns_empty_without_querying_db(self):
+        assert search_locations_by_name("") == []
+        assert search_locations_by_name("   ") == []
+
+    @patch("py._places_resolver.places_geo_collection")
+    def test_scopes_to_consumer_facing_geo_types(self, mock_coll):
+        mock_cursor = MagicMock()
+        mock_cursor.sort.return_value.skip.return_value.limit.return_value.max_time_ms.return_value = []
+        mock_coll.return_value.find.return_value = mock_cursor
+
+        search_locations_by_name("harare")
+
+        query_filter = mock_coll.return_value.find.call_args[0][0]
+        assert query_filter["geoType"] == {"$in": ["city", "town", "village"]}
+        assert {"name": {"$regex": "harare", "$options": "i"}} in query_filter["$or"]
+
+    @patch("py._places_resolver.places_geo_collection")
+    def test_tag_filter_is_optional(self, mock_coll):
+        mock_cursor = MagicMock()
+        mock_cursor.sort.return_value.skip.return_value.limit.return_value.max_time_ms.return_value = []
+        mock_coll.return_value.find.return_value = mock_cursor
+
+        search_locations_by_name("harare", tag="farming")
+
+        query_filter = mock_coll.return_value.find.call_args[0][0]
+        assert query_filter["sourceProvenance.mukokoTags"] == "farming"
+
+    @patch("py._places_resolver.places_geo_collection")
+    def test_db_error_returns_empty(self, mock_coll):
+        mock_coll.return_value.find.side_effect = RuntimeError("boom")
+        assert search_locations_by_name("harare") == []
+
+
+class TestFindNearestLocations:
+    """find_nearest_locations (py._places_resolver) — the canonical
+    $nearSphere proximity query shared by find_nearest_location and
+    GET /api/py/search's geospatial branch."""
+
+    @patch("py._places_resolver.places_geo_collection")
+    def test_scopes_to_consumer_facing_geo_types_and_radius(self, mock_coll):
+        mock_coll.return_value.find.return_value.limit.return_value = []
+        find_nearest_locations(-17.83, 31.05, limit=5, max_km=100)
+
+        query = mock_coll.return_value.find.call_args[0][0]
+        assert query["geoType"] == {"$in": ["city", "town", "village"]}
+        near = query["geo"]["$nearSphere"]
+        assert near["$geometry"]["coordinates"] == [31.05, -17.83]
+        assert near["$maxDistance"] == 100000
+        mock_coll.return_value.find.return_value.limit.assert_called_once_with(5)
+
+    @patch("py._places_resolver.places_geo_collection")
+    def test_db_error_returns_empty_list(self, mock_coll):
+        mock_coll.return_value.find.side_effect = RuntimeError("no index")
+        assert find_nearest_locations(0, 0) == []
+
+    @patch("py._places_resolver.find_nearest_locations")
+    def test_singular_delegates_to_plural(self, mock_plural):
+        from py._places_resolver import find_nearest_location as singular
+        mock_plural.return_value = [{"slug": "harare"}]
+        assert singular(-17.83, 31.05, max_km=150) == {"slug": "harare"}
+        mock_plural.assert_called_once_with(-17.83, 31.05, limit=1, max_km=150)
+
+
 # ---------------------------------------------------------------------------
 # geo_lookup endpoint
 # ---------------------------------------------------------------------------
@@ -647,6 +712,15 @@ class TestGeoLookup:
     find_nearest_location() against places.placesGeo. Auto-create writes
     only to placesGeo via upsert_placesgeo_city().
     """
+
+    @pytest.fixture(autouse=True)
+    def _allow_rate_limit(self):
+        # autoCreate=True now rate-limits like /api/py/locations/add's
+        # coordinates mode — stub it open by default so these tests exercise
+        # geocoding/dedup logic, not the rate limiter. Tests calling without
+        # a request rely on the "unknown" IP fallback (see geo_lookup).
+        with patch("py._locations.check_rate_limit", return_value={"allowed": True, "remaining": 4}):
+            yield
 
     @pytest.mark.asyncio
     @patch("py._locations._reverse_geocode")
@@ -681,6 +755,29 @@ class TestGeoLookup:
             await geo_lookup(-17.83, 31.05)
 
         assert mock_nearest.call_args.kwargs["max_km"] <= 200
+
+    @pytest.mark.asyncio
+    @patch("py._locations.check_rate_limit")
+    async def test_autocreate_rate_limited(self, mock_rate):
+        """autoCreate=true does the same expensive reverse-geocode + DB-write
+        work as POST /api/py/locations/add's coordinates mode, so it must be
+        rate-limited the same way (429 when the bucket is exhausted)."""
+        mock_rate.return_value = {"allowed": False, "remaining": 0}
+        with pytest.raises(HTTPException) as exc_info:
+            await geo_lookup(-17.83, 31.05, autoCreate=True)
+        assert exc_info.value.status_code == 429
+        mock_rate.assert_called_once_with("unknown", "location-create", 5, 3600)
+
+    @pytest.mark.asyncio
+    @patch("py._locations.check_rate_limit")
+    @patch("py._locations.find_nearest_location")
+    async def test_find_only_path_is_not_rate_limited(self, mock_nearest, mock_rate):
+        """The cheap find-only path (autoCreate=false, e.g. IP-geo) must stay
+        unlimited — only auto-create does expensive work worth throttling."""
+        mock_nearest.return_value = {"slug": "harare", "name": "Harare", "country": "ZW"}
+        result = await geo_lookup(-17.83, 31.05, autoCreate=False)
+        assert result["nearest"]["slug"] == "harare"
+        mock_rate.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("py._locations._find_duplicate")
@@ -1980,6 +2077,11 @@ class TestMatchNearbyPoi:
 
 
 class TestGeoLookupPoiRefinement:
+    @pytest.fixture(autouse=True)
+    def _allow_rate_limit(self):
+        with patch("py._locations.check_rate_limit", return_value={"allowed": True, "remaining": 4}):
+            yield
+
     @pytest.mark.asyncio
     @patch("py._locations.upsert_placesgeo_city")
     @patch("py._locations._enrich_location_with_ai")

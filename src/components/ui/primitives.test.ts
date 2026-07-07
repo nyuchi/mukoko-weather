@@ -104,6 +104,17 @@ describe("Dialog", () => {
     expect(src).toContain("sm:hidden"); // grab handle only on mobile
   });
 
+  it("DialogSheetHandle stays pinned to the top of the scrollable sheet", async () => {
+    // DialogContent is the overflow-y-auto scroll container, so the handle
+    // needs `sticky top-0` (with a matching background) or it scrolls away
+    // with the rest of a tall sheet's content instead of staying reachable.
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const src = readFileSync(resolve(__dirname, "dialog.tsx"), "utf-8");
+    expect(src).toContain("sticky top-0");
+    expect(src).toContain("bg-surface-card");
+  });
+
   it("uses CSS custom property radius tokens — no hardcoded border-radius", async () => {
     const { readFileSync } = await import("fs");
     const { resolve } = await import("path");
@@ -368,5 +379,33 @@ describe("ActivityCard", () => {
   it("exports ActivityCard component", async () => {
     const mod = await import("@/components/weather/ActivityCard");
     expect(mod.ActivityCard).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spinner — shared loading-ring primitive (issue #104)
+// ---------------------------------------------------------------------------
+
+describe("Spinner", () => {
+  it("exports the Spinner component", async () => {
+    const mod = await import("./spinner");
+    expect(mod.Spinner).toBeDefined();
+  });
+
+  it("is the single spinning-ring implementation — no hand-rolled copies remain", async () => {
+    const { readFileSync } = await import("fs");
+    const { resolve } = await import("path");
+    const callSites = [
+      "../explore/ExploreSearch.tsx",
+      "../weather/MyWeatherModal.tsx",
+      "../weather/HistoryAnalysis.tsx",
+      "../weather/reports/RecentReports.tsx",
+      "../../app/history/HistoryDashboard.tsx",
+    ];
+    for (const file of callSites) {
+      const source = readFileSync(resolve(__dirname, file), "utf-8");
+      expect(source).toContain("<Spinner");
+      expect(source).not.toContain("animate-spin rounded-full border-2");
+    }
   });
 });
