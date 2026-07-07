@@ -136,10 +136,38 @@ mukoko-weather/
 │   │   ├── privacy/page.tsx          # Privacy policy
 │   │   ├── terms/page.tsx            # Terms of service
 │   │   ├── embed/page.tsx            # Widget embedding docs
+│   │   ├── aviation/                 # Aviation planner (auth-gated): METAR/TAF station picker + PDF pre-flight briefing
+│   │   │   ├── page.tsx              # Server wrapper (requireUser, metadata)
+│   │   │   ├── AviationPlanner.tsx   # Client: station search, METAR/TAF decode, flight-category badges
+│   │   │   ├── AviationBriefingPDF.tsx # @react-pdf/renderer briefing document
+│   │   │   └── aviation.test.ts
+│   │   ├── developers/               # Developer docs + gated API-key management
+│   │   │   ├── page.tsx              # Public API documentation page
+│   │   │   ├── developers.test.ts
+│   │   │   └── keys/                 # /developers/keys — gated (requireUser)
+│   │   │       ├── page.tsx          # Server wrapper (auth gate)
+│   │   │       ├── ApiKeysManager.tsx # Client: create (key shown once) / list (masked) / revoke
+│   │   │       └── ApiKeysManager.test.ts
+│   │   ├── profile/                  # Signed-in account page (requireUser)
+│   │   ├── auth/                     # signin/ + signout/ server redirect routes (WorkOS AuthKit)
+│   │   ├── callback/route.ts         # OAuth callback (handleAuth + identity.persons upsert)
+│   │   ├── offline/page.tsx          # PWA offline fallback page
+│   │   ├── sw.ts                     # Service worker source (serwist)
 │   │   └── api/                      # Remaining TypeScript API routes (most migrated to Python)
 │   │       ├── og/                   # Dynamic OG image generation (Edge runtime, Satori)
 │   │       │   ├── route.tsx         # GET — generates 1200×630 OG images with brand templates
 │   │       │   └── og-route.test.ts  # OG route tests (templates, rate limiting, metadata wiring)
+│   │       ├── ai/                   # Auth-gated proxy for /api/py/ai/* (Phase 1D)
+│   │       │   ├── [[...path]]/route.ts   # Optional catch-all — bare /api/ai (summary) must match
+│   │       │   ├── [[...path]]/route.test.ts
+│   │       │   └── ai-proxy.test.ts
+│   │       ├── embed/current/        # Public embed API (Edge, open CORS) — powers the widget
+│   │       ├── keys/                 # Developer API keys (auth-gated)
+│   │       │   ├── route.ts          # GET (list, masked) / POST (mint — full key returned once, 10/user cap)
+│   │       │   ├── keys-route.test.ts
+│   │       │   └── [id]/             # DELETE — revoke own key (ownerPersonId-scoped)
+│   │       │       ├── route.ts
+│   │       │       └── id-route.test.ts
 │   │       └── db-init/
 │   │           ├── route.ts          # POST — one-time DB setup (indexes + seed data)
 │   │           └── db-init-route.test.ts
@@ -283,6 +311,8 @@ mukoko-weather/
 │   │   ├── weather.test.ts
 │   │   ├── weather-labels.ts      # Contextual label helpers (humidityLabel, pressureLabel, cloudLabel, feelsLikeContext)
 │   │   ├── weather-labels.test.ts
+│   │   ├── api-keys.ts            # Developer API keys — mk_live_ generation (CSPRNG), SHA-256 hashing, masking, owner-scoped CRUD in platform.apiKeys
+│   │   ├── api-keys.test.ts
 │   │   ├── mongo.ts               # MongoDB Atlas connection pooling
 │   │   ├── db.ts                  # Database CRUD (weather_cache, ai_summaries, weather_history, rate_limits, activities, suitability_rules, tags, regions, seasons, ai_prompts, ai_suggested_rules, weather_reports, history_analysis). Location lookups delegate to places.ts (Phase 0F).
 │   │   ├── places.ts              # Canonical location resolver — reads from places.placesGeo (admin geography) + places.places (POIs). Replaces all reads from the dropped weather.locations.
@@ -544,9 +574,14 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/help` — user help/FAQ
 - `/history` — historical weather data dashboard (search, multi-day charts, data table)
 - `/profile` — signed-in account page (avatar/name/email, sign out, entry point into My Weather preferences). Reached via the header's account icon; anonymous visitors are redirected to sign-in
+- `/aviation` — auth-gated aviation planner (nearest-station METAR/TAF, flight-category badges, PDF pre-flight briefing)
+- `/developers` — public developer/API documentation page
+- `/developers/keys` — auth-gated developer API-key management (create — full key shown once / list masked / revoke)
 - `/embed` — widget embedding docs
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
+- `/api/keys` — GET (list caller's keys, masked) / POST (mint a developer API key in `platform.apiKeys`; full key returned ONCE, SHA-256 hashed at rest, 10/user cap, eligible entity-membership role required). Auth-gated via `withAuth()`
+- `/api/keys/[id]` — DELETE, revoke one of the caller's own keys (soft-delete, `ownerPersonId`-scoped). Auth-gated via `withAuth()`
 - `/api/ai/[[...path]]` — ANY (Phase 1D), auth-gated proxy (OPTIONAL catch-all — the bare `/api/ai` is the AI summary endpoint itself; a required catch-all 404'd it) for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
 - `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording). Also attaches Windy-style ADDITIONAL data from Open-Meteo (free, keyless): `minutely` (next-hour precip nowcast, 4×15-min steps, always attempted) and, via the optional `?models=` comma list (`gfs_seamless,ecmwf_ifs04,icon_seamless,meteofrance_seamless`), a multi-model comparison — `models` (per-model hourly temp/precip series), `models_available`, `models_time`. The extras fetch is circuit-breaker gated (`open_meteo_breaker`) and best-effort — never blocks the base forecast
 - `/api/py/ai` — POST, AI weather summaries (MongoDB cached with tiered TTL: 30/60/120 min)
@@ -1331,6 +1366,9 @@ _TypeScript API route tests (remaining):_
 
 - `src/app/api/og/og-route.test.ts` — OG image route (templates, brand tokens, rate limiting, metadata wiring in layout + location pages)
 - `src/app/api/db-init/db-init-route.test.ts` — DB init route
+- `src/app/api/ai/ai-proxy.test.ts` + `src/app/api/ai/[[...path]]/route.test.ts` — auth-gated AI proxy (optional catch-all, header stripping, internal-secret stamp)
+- `src/app/api/keys/keys-route.test.ts` + `src/app/api/keys/[id]/id-route.test.ts` — developer API keys (mint-once, masking, caps, ownership scoping)
+- `src/lib/api-keys.test.ts` — key generation/hashing (never stores raw), label sanitisation, owner-scoped CRUD
 
 _Note:_ All other API routes have been migrated to Python (`api/py/`). Python backend tests should use pytest (see below).
 
@@ -1675,6 +1713,7 @@ The app is **public by default** — weather pages, explore, search, maps, and e
 | `/history`                                  | Page-level      | `await requireUser()` (historical analysis dashboard)                                                                                                                                                                                                                     |
 | `/profile`                                  | Page-level      | `await requireUser()` (account details + My Weather preferences entry point, reached via the header's account icon)                                                                                                                                                       |
 | `/api/ai/*`                                 | Route-level     | Next.js proxy at `src/app/api/ai/[[...path]]/route.ts` (optional catch-all — bare `/api/ai` must match) calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers                          |
+| `/api/keys`, `/api/keys/[id]`               | Route-level     | `withAuth()` in each handler (401 anonymous); create additionally requires an eligible `entity.memberships` role (403 otherwise); list/revoke scoped to `ownerPersonId`                                                                                                   |
 | `AISummary` widget on public location pages | Component-level | Receives a `user: AISummaryUser \| null` prop hydrated server-side via `getCurrentUser()` in `/[location]/page.tsx`. Anonymous users see a `.baobab` sign-in CTA (with `.kudu-sm` button → `/auth/signin?returnTo=<current>`). Signed-in users see the summary as before. |
 | `AISummaryChat` follow-up                   | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA.                                                                                                                                                                                                |
 
