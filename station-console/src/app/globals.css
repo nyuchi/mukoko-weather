@@ -228,3 +228,16 @@
     display: none;
   }
 }
+
+/* Registry shell entrance motion (nyuchi-footer) — gated by the harness's
+   prefers-reduced-motion check, so no additional media query needed here. */
+@keyframes nyuchi-fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
