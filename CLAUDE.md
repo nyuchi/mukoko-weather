@@ -192,7 +192,7 @@ mukoko-weather/
 │   │   │   ├── AtmosphericDetails.tsx # Imports chart components for 24h atmospheric views
 │   │   │   ├── LazyAtmosphericDetails.tsx # Lazy-load wrapper (React.lazy + Suspense)
 │   │   │   ├── MetricCard.tsx           # MetricCard + ArcGauge (radial gauge with value display)
-│   │   │   ├── ActivityCard.tsx        # ActivityCard (suitability card for a single activity)
+│   │   │   ├── ActivityCard.tsx        # ActivityCard (per-activity rating badge + 24h feasibility trend + weather tips)
 │   │   │   ├── StatCard.tsx            # Reusable stat card (label + value)
 │   │   │   ├── SectionSkeleton.tsx    # Generic section loading skeleton
 │   │   │   ├── LazySection.tsx        # TikTok-style sequential lazy-load with bidirectional visibility
@@ -215,7 +215,9 @@ mukoko-weather/
 │   │   │   │   ├── GDDChart.tsx            # Growing degree days (farming)
 │   │   │   │   ├── HeatStressChart.tsx     # Heat stress index
 │   │   │   │   ├── ThunderstormChart.tsx   # Thunderstorm probability
-│   │   │   │   └── VisibilityChart.tsx     # Visibility distance
+│   │   │   │   ├── VisibilityChart.tsx     # Visibility distance
+│   │   │   │   ├── FeasibilityChart.tsx    # 24h activity feasibility line (mineral-colored, rating-word axis)
+│   │   │   │   └── FeasibilityChart.test.ts
 │   │   │   ├── WelcomeBanner.tsx      # Inline welcome banner for first-time visitors (replaces auto-modal)
 │   │   │   ├── WelcomeBanner.test.ts
 │   │   │   ├── MyWeatherModal.tsx     # Centralized preferences modal (location, activities, settings)
@@ -225,7 +227,7 @@ mukoko-weather/
 │   │   │   ├── WeatherLoadingScene.test.ts # KNOWN_ROUTES guard, reduced-motion, Three.js integration, accessibility
 │   │   │   ├── charts.test.ts         # Tests for chart data preparation
 │   │   │   ├── ActivityInsights.test.ts  # Severity helpers, moon phases, precip types
-│   │   │   ├── ActivityCard.test.ts     # Suitability integration (levels, priority, fallbacks)
+│   │   │   ├── ActivityCard.test.ts     # Suitability integration + feasibility trend/tips structure
 │   │   │   ├── AtmosphericSummary.test.ts # Gauge functions (UV, humidity, cloud, wind, pressure, feels-like, precipitation)
 │   │   │   ├── MetricCard.test.ts       # ArcGauge math, SVG geometry, ARIA contract
 │   │   │   ├── DailyForecast.test.ts     # Temperature percent, gradient helpers
@@ -305,6 +307,10 @@ mukoko-weather/
 │   │   ├── map-layers.test.ts
 │   │   ├── error-retry.ts         # Error retry logic with sessionStorage tracking (max 3 retries)
 │   │   ├── error-retry.test.ts
+│   │   ├── activity-feasibility.ts # 24h feasibility series — evaluates suitability rules per forecast hour (LEVEL_SCORES, hourInsights, feasibilitySeries)
+│   │   ├── activity-feasibility.test.ts
+│   │   ├── activity-tips.ts        # Deterministic weather-driven tips per activity (category-aware, no AI call)
+│   │   ├── activity-tips.test.ts
 │   │   ├── use-debounce.ts         # Shared useDebounce hook (generic, reusable across components)
 │   │   ├── use-debounce.test.ts
 │   │   ├── use-location-quick-search.ts      # Shared debounced /api/py/search hook (MyWeatherModal, ExploreSearch, HistoryDashboard, AviationPlanner)
@@ -541,7 +547,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/embed` — widget embedding docs
 - `/api/og` — GET, dynamic OG image generation (Edge runtime, Satori, TypeScript). Query: `title`, `subtitle`, optional `location`, `province`, `season`, `temp`, `condition`, `template` (home/location/explore/history/season/shamwari). In-memory rate-limited (30 req/min/IP), 1-day CDN cache
 - `/api/db-init` — POST, one-time DB setup + seed data (TypeScript). Requires `x-init-secret` header in production
-- `/api/ai/[...path]` — ANY (Phase 1D), auth-gated proxy for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
+- `/api/ai/[[...path]]` — ANY (Phase 1D), auth-gated proxy (OPTIONAL catch-all — the bare `/api/ai` is the AI summary endpoint itself; a required catch-all 404'd it) for all `/api/py/ai/*` endpoints. Validates the AuthKit session via `withAuth()` (401 if anonymous), then forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers (cookies stripped). The UI calls `/api/ai/*` exclusively — Python AI routes still exist and can be called directly by internal/server-side consumers, but the browser never touches them.
 - `/api/py/weather` — GET, proxies Tomorrow.io/Open-Meteo (MongoDB cached 15-min TTL + historical recording). Also attaches Windy-style ADDITIONAL data from Open-Meteo (free, keyless): `minutely` (next-hour precip nowcast, 4×15-min steps, always attempted) and, via the optional `?models=` comma list (`gfs_seamless,ecmwf_ifs04,icon_seamless,meteofrance_seamless`), a multi-model comparison — `models` (per-model hourly temp/precip series), `models_available`, `models_time`. The extras fetch is circuit-breaker gated (`open_meteo_breaker`) and best-effort — never blocks the base forecast
 - `/api/py/ai` — POST, AI weather summaries (MongoDB cached with tiered TTL: 30/60/120 min)
 - `/api/py/chat` — POST, Shamwari Explorer chatbot (Claude + tool use: search_locations, get_weather, get_activity_advice, list_locations_by_tag). Rate-limited 20 req/hour/IP
@@ -702,6 +708,10 @@ Key functions: `getLocationBySlug(slug)`, `searchLocationsFromDb(query, options)
 **Client-side caching:** `src/lib/suitability-cache.ts` — caches suitability rules and category styles on the client with 10-minute TTL. Exports `fetchSuitabilityRules()`, `fetchCategoryStyles()`, `resetCaches()`. Category styles are seeded from static `CATEGORY_STYLES` for instant mineral color rendering on mount.
 
 **Server-side evaluation:** The explore chatbot route (`/api/py/chat`) runs suitability evaluation server-side in `_execute_get_activity_advice`, returning structured level/label/detail to Claude instead of raw weather data, reducing hallucination surface.
+
+**Endpoint serialization note:** `GET /api/py/suitability` projects OUT `updatedAt` (`{"_id": 0, "updatedAt": 0}`) — the sync writes it as a BSON Date, `JSONResponse` can't serialize `datetime`, and the endpoint's catch-all except would silently return `{"rules": []}` (every activity card degrades to "No specific rules available"). Keep any new stored fields JSON-safe or projected out.
+
+**Per-activity feasibility + tips (client):** `src/lib/activity-feasibility.ts` evaluates the SAME database rules against each of the next 24 forecast hours (`hourInsights` synthesizes per-hour `WeatherInsights` using `synthesizeOpenMeteoInsights`' WMO-code conventions plus a Magnus dew-point derivation; `feasibilitySeries` maps levels to `LEVEL_SCORES` 25/50/75/100). `src/lib/activity-tips.ts` produces up to 3 deterministic, category-aware tips (storm safety, rain windows, wind/spraying, UV, frost — scanned over 24h, heat, humidity/fungal) with no AI call. Both render inside `ActivityCard` (chart via `charts/FeasibilityChart.tsx`, mineral-colored per category).
 
 ### Seed Data
 
@@ -912,6 +922,8 @@ All skeletons include `role="status"` and `aria-label="Loading"` for screen read
 
 - Generated by Claude Haiku 3.5 (`claude-haiku-4-5-20251001`) via `POST /api/py/ai`, rendered in `src/components/weather/AISummary.tsx`
 - AI persona: "Shamwari Weather" (Ubuntu philosophy, region-aware context)
+- **Grounding:** the user prompt includes the location name, ISO country code, lat/lon and elevation, plus an explicit instruction to ground every recommendation in that place — never generic global advice
+- **Per-activity AI guidance:** each doc in the `activities` collection can carry an `aiInstructions` string (data-managed — written directly to MongoDB, NOT part of the code seed; `syncActivities` only $sets seed fields so db-init never clobbers it). `get_activities_brief()` in `_db.py` (5-min cache, shared by `_ai.py` and `_chat.py`) supplies `{id, label, category, aiInstructions}`; the summary prompt splices the user's selected activities' guidance in as an "Activity guidance" block, and the Shamwari chat system prompt does the same for the user's interests
 - Summaries are **markdown-formatted** — the system prompt requests bold, bullet points, and no headings
 - Rendered with `react-markdown` inside Tailwind `prose` classes
 - Cached in MongoDB with tiered TTL (30/60/120 min by location tier)
@@ -1662,7 +1674,7 @@ The app is **public by default** — weather pages, explore, search, maps, and e
 | `/aviation`                                 | Page-level      | `await requireUser()` (METAR/TAF planner + PDF briefings)                                                                                                                                                                                                                 |
 | `/history`                                  | Page-level      | `await requireUser()` (historical analysis dashboard)                                                                                                                                                                                                                     |
 | `/profile`                                  | Page-level      | `await requireUser()` (account details + My Weather preferences entry point, reached via the header's account icon)                                                                                                                                                       |
-| `/api/ai/*`                                 | Route-level     | Next.js proxy at `src/app/api/ai/[...path]/route.ts` calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers                                                                             |
+| `/api/ai/*`                                 | Route-level     | Next.js proxy at `src/app/api/ai/[[...path]]/route.ts` (optional catch-all — bare `/api/ai` must match) calls `withAuth()`, 401 if anonymous, otherwise forwards to `/api/py/ai/${path}` with `X-Mukoko-User-Id` + `X-Mukoko-User-Email` headers                          |
 | `AISummary` widget on public location pages | Component-level | Receives a `user: AISummaryUser \| null` prop hydrated server-side via `getCurrentUser()` in `/[location]/page.tsx`. Anonymous users see a `.baobab` sign-in CTA (with `.kudu-sm` button → `/auth/signin?returnTo=<current>`). Signed-in users see the summary as before. |
 | `AISummaryChat` follow-up                   | Component-level | Same `user` prop; anonymous users see the matching tanzanite-bordered CTA.                                                                                                                                                                                                |
 
