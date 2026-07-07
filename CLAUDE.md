@@ -397,7 +397,7 @@ mukoko-weather/
 │   ├── package.json               # Own Next.js app: web-only, NO PWA/offline; WorkOS AuthKit with the SAME credentials as the main app (register the /callback redirect URI in WorkOS)
 │   ├── components.json            # Nyuchi Design registry config — bootstrapped via `npx @nyuchi/design-cli init`, components installed from the registry (design.nyuchi.com → mzizi.dev) via the shadcn CLI
 │   ├── .claude/skills/            # Nyuchi Design agent skills (`npx @nyuchi/design-cli skills install`; versions pinned in .nyuchi-design.json)
-│   └── src/                       # Auth-gated console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage.
+│   └── src/                       # Public landing page at / (anonymous visitors get a sign-in CTA; signed-in users get the console — middleware lists "/" in unauthenticatedPaths); console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage.
 │                                  # Styling per Mzizi doctrine: canonical Nyuchi L1 tokens in src/app/globals.css + registry L2 primitives in src/components/ui/ (Button, Input, Label, Card, Badge, Alert, RadioGroup) — pages are pure composition, no hand-rolled CSS classes or inline styles; theme via next-themes (class-based dark mode); fonts Noto Sans/Serif + JetBrains Mono via next/font
 ├── worker/                        # Cloudflare Workers edge API (optional)
 │   ├── src/
