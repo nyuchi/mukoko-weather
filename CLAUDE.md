@@ -395,7 +395,10 @@ mukoko-weather/
 │       └── _tiles.py              # Map tile proxy for Tomorrow.io
 ├── station-console/               # Station console app (MONOREPO sub-app — separate Vercel project at weatherstations.nyuchi.com)
 │   ├── package.json               # Own Next.js app: web-only, NO PWA/offline; WorkOS AuthKit with the SAME credentials as the main app (register the /callback redirect URI in WorkOS)
-│   └── src/                       # Auth-gated console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage
+│   ├── components.json            # Nyuchi Design registry config — bootstrapped via `npx @nyuchi/design-cli init`, components installed from the registry (design.nyuchi.com → mzizi.dev) via the shadcn CLI
+│   ├── .claude/skills/            # Nyuchi Design agent skills (`npx @nyuchi/design-cli skills install`; versions pinned in .nyuchi-design.json)
+│   └── src/                       # Auth-gated console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage.
+│                                  # Styling per Mzizi doctrine: canonical Nyuchi L1 tokens in src/app/globals.css + registry L2 primitives in src/components/ui/ (Button, Input, Label, Card, Badge, Alert, RadioGroup) — pages are pure composition, no hand-rolled CSS classes or inline styles; theme via next-themes (class-based dark mode); fonts Noto Sans/Serif + JetBrains Mono via next/font
 ├── worker/                        # Cloudflare Workers edge API (optional)
 │   ├── src/
 │   │   ├── index.ts               # Hono app, route mounting, CORS
