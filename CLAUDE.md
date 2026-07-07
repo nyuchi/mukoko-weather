@@ -390,8 +390,12 @@ mukoko-weather/
 │       ├── _devices.py            # Device sync (preferences across devices)
 │       ├── _circuit_breaker.py    # Netflix Hystrix-inspired circuit breaker (per-provider resilience)
 │       ├── _embeddings.py         # Vector embedding endpoints
+│       ├── _stations.py           # Community station registration + WU/Ecowitt ingest + manual readings (StationKit writer)
 │       ├── _status.py             # System health checks
 │       └── _tiles.py              # Map tile proxy for Tomorrow.io
+├── station-console/               # Station console app (MONOREPO sub-app — separate Vercel project at weatherstations.nyuchi.com)
+│   ├── package.json               # Own Next.js app: web-only, NO PWA/offline; WorkOS AuthKit with the SAME credentials as the main app (register the /callback redirect URI in WorkOS)
+│   └── src/                       # Auth-gated console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage
 ├── worker/                        # Cloudflare Workers edge API (optional)
 │   ├── src/
 │   │   ├── index.ts               # Hono app, route mounting, CORS
@@ -521,6 +525,8 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/py/devices` (create) — 20 req/hour, only when `deviceId` is omitted/fresh (unbounded doc creation); an existing/caller-supplied `deviceId` is idempotent and skips the limiter
 - `/api/py/reports` (submit) — 5 req/hour
 - `/api/py/reports/clarify` — 10 req/hour
+- `/api/py/stations/register` — 3 req/hour
+- `/api/py/stations/manual` — 12 req/hour (ingest endpoints authenticate by station key instead)
 
 **Resilience:** Module-level Anthropic client singletons with key-rotation detection (hash-based invalidation). Graceful degradation — AI endpoints return basic summaries when Anthropic is unavailable. Weather endpoints fall back through Tomorrow.io → Open-Meteo → seasonal estimates.
 
@@ -616,6 +622,10 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 - `/api/py/embeddings/status` — GET, vector search infrastructure status (stub)
 - `/api/py/airquality` — GET, EPA-standard Air Quality Index (0-500) + 7-pollutant breakdown (PM2.5, PM10, O3, NO2, SO2, CO, NH3) for `lat`/`lon`. Sourced from Open-Meteo Air Quality (free, no key) via `open_meteo_breaker`. Cached 1 h in `weather.air_quality_cache` with deterministic `_id` (`{lat:.4f}_{lon:.4f}`) so duplicate requests upsert one row, never two
 - `/api/py/airports/nearest` — GET, N nearest ICAO airports to `lat`/`lon` (query: `lat`, `lon`, optional `count` default 5 / max 20, optional `maxDistanceKm` default 500) via MongoDB `$geoNear` on the seeded `weather.airports` collection. Each result carries `icao` + `name` + `distanceKm`, sorted closest-first. Returns an empty list on any DB error so the TS client falls back to the static haversine scan
+- `/api/py/stations/register` — POST, register a community weather station (digital or manual/analog). Rate-limited 3/hour/IP. Returns `stationId` + `ingestKey` ONCE (SHA-256 hash at rest) with custom-server setup instructions
+- `/api/py/stations/ingest` — GET (Wunderground protocol, `ID`/`PASSWORD` query params) and POST (Ecowitt protocol, form fields with `PASSKEY=<stationId>:<ingestKey>`) — consumer station consoles push readings directly here via their "customized upload" setting. Imperial→metric conversion, inline QC range checks; raw payloads archived in `weather.stationObservations`, passing readings become validated `weather.observations` docs that `/api/py/weather` blends into current conditions (StationKit flow). Responds with the literal body `success` (WU protocol requirement)
+- `/api/py/stations/manual` — POST, manual reading from an analog station (farmers/schools: rain gauge + thermometer, no digital infrastructure). Requires `stationId` + `key`; Pydantic range validation + same QC/observation flow. Rate-limited 12/hour/IP
+- `/api/py/stations/status` — GET (`id`, `key`), last-seen + latest metrics for the owner's console
 - `/api/py/health` — GET, basic health check (MongoDB + Anthropic availability)
 
 ### Error Handling
@@ -1401,6 +1411,7 @@ _Python backend tests (pytest):_
 - `tests/py/test_ai_prompts.py` — AI prompts: single/all prompts, suggested rules, module-level caching, DB error graceful degradation
 - `tests/py/test_index.py` — FastAPI app: CORS origins, health endpoint, ConnectionFailure handler, all 16 routers mounted
 - `tests/py/test_tiles.py` — Map tiles: Tomorrow.io weather overlay proxy (layer validation, zoom range, timestamp validation, SSRF protection, proxy behavior, cache headers) + Mapbox base tile proxy (style validation, zoom range, URL construction, dark mode)
+- `tests/py/test_stations.py` — Station ingest: unit conversions (°F/mph/inHg/inches), QC range filter, hashed-key auth, registration (key never stored raw, GeoJSON location), manual readings (validated observation writes, 401/400 paths)
 - `tests/py/test_status.py` — System health: MongoDB/Tomorrow.io/Open-Meteo/Anthropic/cache checks, overall status aggregation
 - `tests/py/test_embeddings.py` — Embeddings stub: status endpoint shape
 
