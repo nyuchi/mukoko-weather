@@ -393,6 +393,9 @@ mukoko-weather/
 │       ├── _stations.py           # Community station registration + WU/Ecowitt ingest + manual readings (StationKit writer)
 │       ├── _status.py             # System health checks
 │       └── _tiles.py              # Map tile proxy for Tomorrow.io
+├── station-console/               # Station console app (MONOREPO sub-app — separate Vercel project at weatherstations.nyuchi.com)
+│   ├── package.json               # Own Next.js app: web-only, NO PWA/offline; WorkOS AuthKit with the SAME credentials as the main app (register the /callback redirect URI in WorkOS)
+│   └── src/                       # Auth-gated console: register stations, one-time credentials + WU/Ecowitt setup instructions, manual readings, status. Calls the /api/py/stations/* endpoints (CORS-allowed origin); station keys live in the owner's browser localStorage
 ├── worker/                        # Cloudflare Workers edge API (optional)
 │   ├── src/
 │   │   ├── index.ts               # Hono app, route mounting, CORS

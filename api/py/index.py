@@ -62,7 +62,9 @@ app = FastAPI(
 
 _ALLOWED_ORIGINS = [
     "https://weather.mukoko.com",
+    "https://weatherstations.nyuchi.com",  # station console (monorepo: station-console/, separate Vercel project)
     "http://localhost:3000",   # web dev (Next.js)
+    "http://localhost:3001",   # station console dev
     "http://localhost:8081",   # Expo Metro web bundler
     "http://localhost:8082",   # Expo web dev server
     "http://localhost:19006",  # legacy Expo web port
