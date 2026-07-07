@@ -218,6 +218,11 @@ export function WeatherDashboard({
         windSpeed={weather.current.wind_speed_10m}
         isDay={weather.current.is_day === 1}
       />
+      {/* Everything above the backdrop — an explicit positive stacking layer.
+          Negative z-index on the backdrop was invisible on iOS Safari (fixed
+          negative-z + overflow-x:hidden body paints behind the background),
+          so the layering is expressed positively: backdrop z-0, content z-10. */}
+      <div className="relative z-10">
       <Header />
 
       {/* Breadcrumb navigation — always three layers: Country / Province / Location */}
@@ -507,6 +512,7 @@ export function WeatherDashboard({
       </main>
 
       <Footer />
+      </div>
     </>
   );
 }
