@@ -62,9 +62,9 @@ mukoko-weather/
 ├── src/
 │   ├── app/                          # Next.js App Router
 │   │   ├── layout.tsx                # Root layout, metadata, JSON-LD schemas
-│   │   ├── page.tsx                  # Home — server: resolves lastLocation cookie / IP-geo, hands off to HomeLanding
-│   │   ├── HomeLanding.tsx           # Client: GPS-first landing (auto-GPS first visit; returning visitors' redirect GATED on a current-location recheck — current location precedes saved)
-│   │   ├── HomeLanding.test.ts       # HomeLanding + page.tsx + proxy.ts tests (structure, travel recheck, edge routing)
+│   │   ├── page.tsx                  # Home — server: resolves lastLocation cookie / IP-geo, fetches full dashboard payload, renders CurrentLocationHome
+│   │   ├── CurrentLocationHome.tsx   # Client: silent-URL home — renders the current-location dashboard inline, GPS swaps content in place (no redirect)
+│   │   ├── CurrentLocationHome.test.ts # CurrentLocationHome + page.tsx + proxy.ts tests (silent-URL model, server seeding, edge routing)
 │   │   ├── globals.css               # Brand System v6 CSS custom properties
 │   │   ├── loading.tsx               # Root loading skeleton
 │   │   ├── error.tsx                 # Global error boundary (client component)
@@ -562,7 +562,7 @@ All data handling, AI operations, database CRUD, and rule evaluation run in Pyth
 
 **Sub-route back-navigation:** `/[location]/atmosphere`, `/[location]/forecast`, and `/[location]/map` all render the shared `Breadcrumb` component (`src/components/layout/Breadcrumb.tsx` — `Home / {location.name} / {current page}`) instead of each hand-rolling its own trail. `/[location]/map` previously used a floating "← Back to weather" pill overlay on the map; it now uses the same breadcrumb bar as the other two sub-routes for a consistent back-navigation pattern across all three.
 
-- `/` — GPS-first landing via `HomeLanding` (see "HomeLanding (Smart Home Page)" below): first-time visitors get a full auto-GPS prompt; returning visitors see their cached location's countdown immediately, but the redirect is gated on a current-location GPS recheck — current location always takes precedence over the saved one
+- `/` — the CURRENT-LOCATION weather page itself (silent URL — see "CurrentLocationHome (Silent-URL Home)" below): server-seeded from the lastLocation cookie / IP geo, client GPS swaps the dashboard in place. No redirect exists, so current location precedes saved by construction; `/{slug}` URLs remain for saved/browsed locations
 - `/[location]` — dynamic weather pages — overview: current conditions, AI summary, activity insights, atmospheric metric cards
 - `/[location]/atmosphere` — 24-hour atmospheric detail charts (humidity, wind, pressure, UV) for a location
 - `/[location]/forecast` — hourly (24h) + daily (7-day) forecast charts + sunrise/sunset for a location
@@ -1021,7 +1021,7 @@ All AI system prompts, suggested prompt rules, and model configurations are stor
 
 - Dynamic `robots.ts` and `sitemap.ts`
 - Per-page metadata via `generateMetadata()` in `[location]/page.tsx` — season data deduplicated across metadata + page component via React `cache()`
-- **Canonical URLs:** Every page sets its own `alternates.canonical` in metadata. The root layout does NOT set a canonical — doing so would bleed into every child page that doesn't override it, causing Google Search Console duplicate canonical errors. The home page (`/`) canonical points to `/harare` so Google indexes the main location page instead of the client-side redirect
+- **Canonical URLs:** Every page sets its own `alternates.canonical` in metadata. The root layout does NOT set a canonical — doing so would bleed into every child page that doesn't override it, causing Google Search Console duplicate canonical errors. The home page (`/`) canonical is `/` itself — it renders real current-location content now, not a redirect chooser
 - JSON-LD schemas: WebApplication, Organization, WebSite, FAQPage, BreadcrumbList, WebPage+Place
 - Twitter cards (`@mukokoafrica`) and Open Graph tags on all pages
 - Dynamic OG images via `/api/og` (Edge runtime, Satori) — 6 templates (home, location, explore, history, season, shamwari), mineral accent stripe, in-memory rate limiting, 1-day CDN cache. Location pages intentionally omit weather data from OG params to avoid extra DB round-trips per SSR render
@@ -1156,7 +1156,7 @@ The header takes no props — location context comes from the URL path.
 
 **Integration:** `src/components/weather/WeatherLoadingScene.tsx` — branded loading overlay used by:
 
-- `src/app/HomeLanding.tsx` — home page landing (shows "Finding your location..." / "Taking you to {city}...")
+- `src/app/CurrentLocationHome.tsx` — home GPS-with-nothing-seeded state (shows "Finding your location…")
 - `src/app/[location]/loading.tsx` — location page loading (shows location-aware weather animation)
 
 **Route slug detection:** The component extracts a location slug from the URL pathname as a fallback (for `loading.tsx` files). A `KNOWN_ROUTES` set (`explore`, `shamwari`, `history`, `about`, `help`, `privacy`, `terms`, `status`, `embed`) guards against misinterpreting non-location route names as location slugs.
@@ -1165,20 +1165,24 @@ The header takes no props — location context comes from the URL path.
 
 **Note:** Three.js WebGL requires raw hex colors — CSS custom properties don't work in WebGL shaders. Hardcoded hex values in `scenes/*.ts` are a documented exception to the "no hardcoded styles" rule.
 
-### HomeLanding (Smart Home Page)
+### CurrentLocationHome (Silent-URL Home)
 
-The home page (`/`) is a server/client split, designed around one hard constraint: **device GPS only exists in the browser** — the edge and the server can never consult it directly. Every "does the visitor need a different location than last time?" decision therefore has to happen client-side.
+The home page (`/`) IS the current-location weather page — Apple Weather's MY LOCATION model with the URL kept silent. There is **no redirect and no countdown**: home is the destination, so the "stuck on a saved location's URL" class of bug is structurally impossible. Explicit `/{slug}` URLs remain the shareable/SEO surface for saved and browsed locations.
+
+Built around one hard constraint: **device GPS only exists in the browser** — the server can never consult it, so it seeds the best content it can and the client has the last word.
 
 **Pieces:**
 
-- `src/proxy.ts` — edge middleware. Only sets the `lastLocation` cookie (30 days) when a location page is visited. **Deliberately does NOT redirect the home page** — an edge-instant redirect straight to a cached cookie would skip any GPS recheck entirely and strand a traveling visitor on their old city every time they open the app.
-- `src/app/page.tsx` — server component. Resolves the `lastLocation` cookie to a real `WeatherLocation` via `getLocationFromDb()` (only trusts a slug that both looks valid AND actually resolves — an unresolvable/deleted slug falls through to fresh detection instead of looping). If resolved, passes it to `HomeLanding` as `detectedLocation` with `isReturningUser={true}`. Otherwise falls back to server-side IP geo (Vercel's `x-vercel-ip-latitude`/`longitude` headers, find-only, `autoCreate=false`) as a rough hint for first-time visitors.
-- `src/app/HomeLanding.tsx` — client component, GPS-first pipeline (mirrors Apple/Google Weather):
-  1. **First-time visitor** (`isReturningUser` false, no prior local state) → auto-triggers full browser GPS on mount (`detectUserLocation({ autoCreate: true })`), showing "Finding your location…" while it runs. Success/created → redirect there. Denied/unavailable/error → fall back to the IP-geo countdown if present, else the city chooser. A one-time `mukoko-gps-autoprompted` localStorage flag (independent of Zustand) ensures this only ever runs once per visitor.
-  2. **Returning visitor** (cached `lastLocation`) → shows that location's "Taking you to {city}…" countdown **immediately** — but the redirect is **gated on a current-location recheck settling** (`recheckSettled`): **current location takes precedence over saved locations** (the Apple Weather rule), so the cached city can never win a race against a GPS check that is still running. The recheck is a fast-timeout (4s), cache-friendly (5 min `maximumAge`) GPS check via `detectUserLocation()`; an absolute 8s settle cap (`RECHECK_SETTLE_CAP_MS`) guarantees the redirect never hangs. GPS resolving somewhere new swaps the redirect target; when the nearest KNOWN location is > 25 km from the fix (`FAR_NEAREST_KM` — rural travel), a create-on-demand lookup (`autoCreate: true`) resolves the user's actual place instead of a far-away catalog entry. Denial/failure/timeout lets the cached location proceed.
-  3. "Use my current location" button / "Browse all locations" link — unchanged manual escape hatches.
+- `src/proxy.ts` — edge middleware. Only sets the `lastLocation` cookie (30 days) when a `/{slug}` page is visited. Never redirects home traffic.
+- `src/app/page.tsx` — server component. Resolves the `lastLocation` cookie to a real `WeatherLocation` via `getLocationFromDb()` (only trusts a slug that both looks valid AND actually resolves), else falls back to IP geo (Vercel `x-vercel-ip-*` headers, find-only, `autoCreate=false`). For the resolved location it fetches the FULL dashboard payload server-side (same double-caught `getWeatherForLocation` + season + country as `/{slug}` pages) and renders `CurrentLocationHome` with it — a complete server-rendered weather page, instantly. With nothing to resolve, it renders `CurrentLocationHome` with `initial={null}`. Home canonical is `/` itself (it is real content now, not a chooser).
+- `src/app/CurrentLocationHome.tsx` — client component:
+  1. Renders `WeatherDashboard` (keyed by slug) from the server seed immediately — stale-while-refresh, like Apple.
+  2. On mount, refreshes via GPS: runs silently whenever the browser permission is already **granted**; auto-prompts **once ever** for brand-new visitors (`mukoko-gps-autoprompted` localStorage flag); skips entirely when permission is denied or the visitor previously declined the one prompt.
+  3. GPS resolving a **different** slug → fetches that spot's weather client-side (`fetchWeather(lat, lon)`, coordinate-based — no navigation), computes frost/season/country client-side, and **swaps the dashboard in place**. The URL stays `/`. When the nearest known location is > 25 km from the fix (`FAR_NEAREST_KM`), a create-on-demand lookup (`autoCreate: true`) resolves the user's actual place first. The `lastLocation` cookie is rewritten client-side (same name/options as the middleware) so the NEXT server render seeds the fresh spot, and `selectedLocation` is synced to the store.
+  4. GPS confirming the seeded slug (or producing the swap) sets `isCurrentLocation` — `WeatherDashboard` → `CurrentConditions` renders the **MY LOCATION** eyebrow above the location name, Apple style. Server-seeded-but-unconfirmed content shows no eyebrow.
+  5. Nothing seeded + GPS fails/denied → the accessible city chooser (manual "Use my current location" with `autoCreate: true`, "Browse all locations", shared `geo.denied`/`geo.error` i18n copy).
 
-**Why this fixes the "stuck on my home city while traveling" bug:** previously, both the edge middleware and the server page instantly redirected any returning visitor straight to their cached `lastLocation` cookie, and the client-side auto-GPS effect explicitly skipped re-running for anyone who'd already onboarded — so GPS was only ever consulted on a visitor's very first-ever visit. A user who onboarded in Harare and later opened the app in Cape Town would land straight back on Harare's weather. The gated recheck above makes GPS the authority on every app open — the redirect waits for it to settle rather than racing it.
+**Why current location precedes saved by construction:** previous designs redirected `/` to a cached slug and later gated that redirect on a GPS recheck. Both had a race or a wait. Rendering the current location AT `/` removes the redirect entirely — a saved location can't win a race that doesn't exist, and GPS updates land as an in-place content swap whenever they resolve.
 
 ### Lazy Loading & Mobile Performance (TikTok-Style)
 
@@ -1403,7 +1407,7 @@ _Python backend tests (pytest):_
 _Page/component tests:_
 
 - `src/app/seo.test.ts` — metadata generation, schema validation, canonical URL coverage (layout bleed guard, per-page canonical presence)
-- `src/app/HomeLanding.test.ts` — HomeLanding structure, auto-GPS on first visit, gated current-location recheck (settle cap, far-nearest escalation), page.tsx server logic, proxy.ts edge routing
+- `src/app/CurrentLocationHome.test.ts` — silent-URL home model (no redirect, in-place GPS swap, cookie refresh, far-nearest escalation, once-only auto-prompt), page.tsx server seeding, proxy.ts edge routing
 - `src/app/explore/explore.test.ts` — explore page tests (browse-only, Shamwari CTA link)
 - `src/app/shamwari/shamwari.test.ts` — Shamwari page structure, full-viewport layout, loading skeleton
 - `src/app/[location]/FrostAlertBanner.test.ts` — banner rendering, severity styling

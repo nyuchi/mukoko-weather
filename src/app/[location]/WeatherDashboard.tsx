@@ -79,6 +79,12 @@ interface WeatherDashboardProps {
    * place of the AI summary and follow-up chat.
    */
   user: AISummaryUser | null;
+  /**
+   * True when this dashboard is showing the visitor's GPS-confirmed current
+   * location (the silent-URL home) — renders the MY LOCATION eyebrow above
+   * the hero, Apple Weather style.
+   */
+  isCurrentLocation?: boolean;
 }
 
 export function WeatherDashboard({
@@ -89,6 +95,7 @@ export function WeatherDashboard({
   season,
   countryName,
   user,
+  isCurrentLocation = false,
 }: WeatherDashboardProps) {
   const setSelectedLocation = useAppStore((s) => s.setSelectedLocation);
   const selectedActivities = useAppStore((s) => s.selectedActivities);
@@ -335,6 +342,7 @@ export function WeatherDashboard({
                               locationName={location.name}
                               daily={weather.daily}
                               slug={location.slug}
+                              isCurrentLocation={isCurrentLocation}
                             />
                           </ChartErrorBoundary>
                         </DraggableSection>
