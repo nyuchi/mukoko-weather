@@ -1,6 +1,5 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { Console } from "@/components/Console";
-import { MineralsStripe } from "@/components/MineralsStripe";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,7 +25,6 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-3xl space-y-8 p-4 py-12 sm:p-8 sm:py-16">
       <header className="space-y-4">
-        <MineralsStripe />
         <h1 className="font-serif text-3xl font-semibold sm:text-4xl">
           mukoko weather stations
         </h1>

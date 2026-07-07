@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans, Noto_Serif, JetBrains_Mono } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { ThemeProvider } from "@/components/theme-provider";
+import { MineralsStripe } from "@/components/MineralsStripe";
 import "./globals.css";
 
 const notoSans = Noto_Sans({
@@ -42,6 +43,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <MineralsStripe />
           <AuthKitProvider>{children}</AuthKitProvider>
         </ThemeProvider>
       </body>
