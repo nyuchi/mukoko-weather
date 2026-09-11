@@ -21,7 +21,7 @@ npx @nyuchi/design-cli init
 This scaffolds a Next.js 16 project (Turbopack, pnpm, Node 24) with:
 
 - globals.css pre-populated with the seven African minerals tokens (with role + family)
-- components.json pointing at https://mzizi.dev/api/v1/ui
+- components.json pointing at <https://mzizi.dev/api/v1/ui>
 - lib/utils.ts with the cn() helper
 - app/layout.tsx wired with the nyuchi-theme-provider
 - .claude/skills/ populated with all published Nyuchi skills
@@ -62,14 +62,14 @@ Add the seven African minerals tokens at the top of `app/globals.css`:
     --color-gold: 255 215 64;          /* Value — Ghana/SA/Mali/Zimbabwe */
     --color-copper: 255 138 101;       /* Stewardship — Central African Copperbelt */
     --color-terracotta: 225 176 126;   /* Community — Pan-African Sahel */
-    
+
     /* Semantic — query styling-semantic-colors */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --primary: var(--color-cobalt);
     /* ... */
   }
-  
+
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -146,7 +146,7 @@ This populates `./.claude/skills/` with `nyuchi-design-system.md`, `scaffold-com
 pnpm dev
 ```
 
-Open http://localhost:3000 and confirm the theme toggle works, the button renders with the mineral-based styling, and Tailwind picks up the CSS variables.
+Open <http://localhost:3000> and confirm the theme toggle works, the button renders with the mineral-based styling, and Tailwind picks up the CSS variables.
 
 ## Ubuntu philosophy alignment
 
@@ -172,6 +172,7 @@ The ecosystem has two legal layers — the Bundu Foundation (research lab, stand
 Bundu is not an app and not a layer inside a stack; it is the Foundation that governs the ecosystem. Mukoko and Shamwari AI are pillars/products inside Nyuchi Africa, not separate companies.
 
 Not ecosystem apps:
+
 - Any app that extracts value without giving back
 - Any app that requires surveillance for its business model
 - Any app that centralises what should be federated

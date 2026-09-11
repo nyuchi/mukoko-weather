@@ -141,6 +141,7 @@ pub async fn validate_workos_jwt(req: &Request, env: &Env) -> Result<Option<Clai
 ## Naming conventions
 
 All console output uses the [nyuchi:service-name] prefix:
+
 ```rust
 console_log!("[nyuchi:fundi] Healing cycle complete: {} issues processed", count);
 console_error!("[nyuchi:fundi] GitHub API error: {:?}", e);

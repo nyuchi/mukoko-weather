@@ -16,6 +16,7 @@ Each path is a separate Cloudflare Worker or a separate route in a shared Worker
 ## MCP protocol basics
 
 MCP servers expose:
+
 - `tools/list` → returns available tools
 - `tools/call` → executes a specific tool
 - `resources/list` → optional: exposes resources
@@ -26,6 +27,7 @@ All communication is JSON-RPC 2.0 over HTTP with Server-Sent Events (SSE) for st
 ## Tool naming convention
 
 All Nyuchi MCP tools follow snake_case and describe their action clearly:
+
 ```
 get_design_tokens
 list_components
